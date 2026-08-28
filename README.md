@@ -303,7 +303,61 @@ ctest --test-dir build --output-on-failure
 当前尚未完成官方 `cv2` Python generator 集成。仓库中的 Python 目录仅是实验性
 pybind11 原型；正式插件模式应由 OpenCV 主工程生成并注册 Python API。显存池也尚未实现。
 
-## 11. Standalone CMake 安装与集成
+## 11. Python 使用（实验性 standalone 绑定）
+
+仓库顶层提供一个基于 pybind11 的实验性 Python 扩展，模块名为
+`opencv_mx`，不修改系统 `cv2`。先在容器内安装依赖：
+
+```bash
+apt-get update
+apt-get install -y pybind11-dev python3-dev
+```
+
+配置并编译：
+
+```bash
+cmake -S /workspace/opencv_mx -B /workspace/opencv_mx/build \
+  -DBUILD_PYTHON=ON \
+  -DOpenCV_DIR=/usr/lib/x86_64-linux-gnu/cmake/opencv4 \
+  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0 \
+  -DMACA_PATH=/opt/maca-3.8.2
+cmake --build /workspace/opencv_mx/build -j"$(nproc)"
+```
+
+将扩展所在目录加入 `PYTHONPATH` 后调用：
+
+```bash
+export PYTHONPATH=/workspace/opencv_mx/build:$PYTHONPATH
+python - <<'PY'
+import cv2
+import numpy as np
+import opencv_mx as mx
+
+image = cv2.imread("/workspace/opencv_mx/testdata/input_bgr.png")
+gpu = mx.GpuMat()
+gpu.upload(image)
+resized = mx.resize(gpu, (320, 240), cv2.INTER_LINEAR)
+rgb = mx.cvtColor(resized, cv2.COLOR_BGR2RGB)
+result = rgb.download()
+print(result.shape, result.dtype)
+PY
+```
+
+该原型目前支持 `uint8` 的 HxW、HxWx3、HxWx4 NumPy 数组，以及 `resize()`、
+`cvtColor()` 和 `GpuMat.download()`。它需要 MX-C500 设备和本项目的 MACA/CV-CUDA
+运行库。它不是最终的 `cv2.mx` 接口；contrib 插件模式的 Python API 仍应接入
+OpenCV 官方 Python bindings generator。
+
+请安装与 Python 3.12 兼容的新版 pybind11（建议 `pybind11>=2.12`）：
+
+```bash
+python -m pip install -U "pybind11>=2.12"
+```
+
+然后显式开启 `-DBUILD_PYTHON=ON`。插件模式的 Python
+绑定不使用此实验性模块，而由 OpenCV 主工程统一生成。
+
+## 12. Standalone CMake 安装与集成
 
 可通过选项关闭测试或示例：
 
@@ -339,7 +393,7 @@ Runtime、CV-CUDA 仍需在目标环境中安装并可被链接器/运行时找�
 
 运行时仍需确保 MACA Runtime、CV-CUDA 及其动态库位于系统库搜索路径中（或配置 `LD_LIBRARY_PATH`）。
 
-## 12. GpuMat 与 Stream 示例
+## 13. GpuMat 与 Stream 示例
 
 ```cpp
 cv::mx::Stream stream;

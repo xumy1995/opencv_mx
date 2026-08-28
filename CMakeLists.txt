@@ -48,6 +48,7 @@ add_library(opencv_mx
   src/gpumat.cpp
   src/resize.cpp
   src/cvtcolor.cpp)
+set_target_properties(opencv_mx PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(opencv_mx
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -65,7 +66,7 @@ add_library(OpenCVMX::opencv_mx ALIAS opencv_mx)
 
 option(BUILD_TESTS "Build MX backend tests" ON)
 option(BUILD_EXAMPLES "Build MX backend examples" ON)
-option(BUILD_PYTHON "Build Python bindings" ON)
+option(BUILD_PYTHON "Build experimental pybind11 Python bindings" OFF)
 
 if(BUILD_TESTS)
   enable_testing()
