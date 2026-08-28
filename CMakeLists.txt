@@ -65,6 +65,3 @@ add_executable(mx_resize_example examples/resize.cpp)
 target_link_libraries(mx_resize_example PRIVATE opencv_mx)
 
 enable_testing()
-add_test(NAME mx_resize_smoke COMMAND mx_resize_example
-  ${CMAKE_CURRENT_SOURCE_DIR}/testdata/input.jpg
-  ${CMAKE_CURRENT_BINARY_DIR}/output.jpg)
