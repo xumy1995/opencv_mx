@@ -234,3 +234,5 @@ ctest --test-dir build --output-on-failure
 正确尺寸和类型；`INTER_LINEAR`、`INTER_AREA` 还会进行像素误差比较。
 
 当前尚未实现完整引用计数语义、显存池和 Python `cv2.mx` 绑定。
+
+真实图片测试结果保存在 `testdata/real/`，输入由 `input.jpg` 派生为灰度、BGR、BGRA 三种类型，并对 interpolation `0/1/2/3` 全部运行。对 `640 × 480` 输入，输出均为 `320 × 240`，测试文件不会自动删除。

@@ -19,6 +19,7 @@ compile_commands.json
 /input.jpg
 /output.jpg
 /tests/*.jpg
+/testdata/real/
 
 # Crash dumps and editor files
 core
