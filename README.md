@@ -211,7 +211,10 @@ cv::imwrite("output.jpg", dst);
 - `INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
 - 同步 upload、resize、download
 - `cv::mx::Stream` 异步接口
-- `GpuMat` 拷贝共享所有权和 ROI 视图
+- `GpuMat` 拷贝共享所有权、ROI 视图和外部设备内存包装
+
+带 Stream 的 resize 会将 CV-CUDA 资源释放操作排入同一 MACA stream，调用会立即返回；
+在读取结果或复用相关缓冲区前调用 `stream.waitForCompletion()`。不传 Stream 时接口保持同步。
 
 ## 9. 运行自动化测试
 
@@ -223,16 +226,60 @@ ctest --test-dir build --output-on-failure
 
 测试覆盖：
 
-- `CV_8UC3`、`CV_8UC4`
-- `INTER_LINEAR`、`INTER_AREA`
-- CPU↔MX-C500 upload/download 数据一致性
-- ROI 视图和共享拷贝
-- 输出尺寸、类型及 CPU OpenCV 结果误差
+- `CV_8UC1`、`CV_8UC3`、`CV_8UC4`
+- `INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
+- 3 种真实输入图片 × 4 种插值，共 12 个固定 golden 用例
+- 输出尺寸、类型及每个像素与 MX CV-CUDA 0.16 golden 输出完全一致
 
-在当前 CV-CUDA 0.16 外部 Tensor 路径中，`INTER_NEAREST` 和 `INTER_CUBIC`
-与 OpenCV 的舍入语义存在差异，测试仅验证这两种模式能够正确执行并产生
-正确尺寸和类型；`INTER_LINEAR`、`INTER_AREA` 还会进行像素误差比较。
+golden 文件位于
+`testdata/golden/maca3.8.0.10-cvcuda0.16.0/`，由同版本 MX CV-CUDA Python
+接口生成；测试运行时不依赖 Python、Torch 或 NVIDIA CUDA。由于 MX CV-CUDA
+与 OpenCV 的坐标规则并不完全相同，本测试不使用 `cv::resize()` 作为参考。
 
-当前尚未实现完整引用计数语义、显存池和 Python `cv2.mx` 绑定。
+当前尚未实现显存池和 Python `cv2.mx` 绑定。
 
-真实图片测试结果保存在 `testdata/real/`，输入由 `input.jpg` 派生为灰度、BGR、BGRA 三种类型，并对 interpolation `0/1/2/3` 全部运行。对 `640 × 480` 输入，输出均为 `320 × 240`，测试文件不会自动删除。
+测试输入图片保存在 `testdata/input_gray.png`、`input_bgr.png` 和
+`input_bgra.png`，对应的 golden 输出也随仓库提交，其他环境可直接运行同一套测试。
+
+## 10. CMake 安装与集成
+
+可通过选项关闭测试或示例：
+
+```bash
+cmake -S . -B build \
+  -DBUILD_TESTS=OFF \
+  -DBUILD_EXAMPLES=OFF \
+  ...
+```
+
+安装库和头文件：
+
+```bash
+cmake --install build --prefix /opt/opencv-mx
+```
+
+安装后，其他 CMake 项目可使用：
+
+```cmake
+find_package(OpenCVMX CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE OpenCVMX::opencv_mx)
+```
+
+运行时仍需确保 MACA Runtime、CV-CUDA 及其动态库位于系统库搜索路径中（或配置 `LD_LIBRARY_PATH`）。
+
+## 11. GpuMat 与 Stream 示例
+
+```cpp
+cv::mx::Stream stream;
+cv::mx::GpuMat src, dst;
+src.upload(input, stream);
+cv::mx::resize(src, dst, cv::Size(320, 240), cv::INTER_LINEAR, stream);
+stream.waitForCompletion();
+dst.download(output);
+```
+
+ROI 是共享底层显存的视图，不会复制数据：
+
+```cpp
+cv::mx::GpuMat roi(src, cv::Rect(10, 10, 320, 240));
+```
