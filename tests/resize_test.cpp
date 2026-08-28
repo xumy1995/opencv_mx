@@ -6,14 +6,13 @@
 #include <string>
 
 int main(int argc, char **argv) {
-    const std::string path = argc > 1 ? argv[1] : "input.jpg";
-    cv::Mat color = cv::imread(path, cv::IMREAD_COLOR);
-    if (color.empty()) { std::cerr << "cannot read " << path << '\n'; return 1; }
-    std::vector<cv::Mat> images = {color};
-    cv::Mat gray, bgra;
-    cv::cvtColor(color, gray, cv::COLOR_BGR2GRAY);
-    cv::cvtColor(color, bgra, cv::COLOR_BGR2BGRA);
-    images.push_back(gray); images.push_back(bgra);
+    const std::string root = argc > 1 ? argv[1] : "testdata";
+    std::vector<cv::Mat> images;
+    for (const auto &name : {"input_gray.png", "input_bgr.png", "input_bgra.png"}) {
+        cv::Mat image = cv::imread(root + "/" + name, cv::IMREAD_UNCHANGED);
+        if (image.empty()) { std::cerr << "cannot read " << root + "/" + name << '\n'; return 1; }
+        images.push_back(image);
+    }
     for (const cv::Mat &src : images) {
         int type = src.type();
         for (int interp : {cv::INTER_NEAREST, cv::INTER_LINEAR, cv::INTER_CUBIC, cv::INTER_AREA}) {
