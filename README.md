@@ -100,7 +100,9 @@ ctest --test-dir build --output-on-failure
 golden 文件位于 `testdata/golden/maca3.8.0.10-cvcuda0.16.0/`，测试不使用
 `cv::resize()` 作为参考，也不依赖 Python、Torch 或 NVIDIA CUDA。
 
-## 四、Example（C++）
+## 四、Example
+
+### C++ Example (Standalone)
 
 Standalone 编译后运行：
 
