@@ -207,8 +207,8 @@ cv::imwrite("output.jpg", dst);
 
 当前支持：
 
-- `CV_8UC3`、`CV_8UC4`（packed HWC）
-- `INTER_LINEAR`、`INTER_AREA`
+- `CV_8UC1`、`CV_8UC3`、`CV_8UC4`（packed HWC）
+- `INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
 - 同步 upload、resize、download
 - `cv::mx::Stream` 异步接口
 - `GpuMat` 拷贝共享所有权和 ROI 视图
@@ -230,6 +230,7 @@ ctest --test-dir build --output-on-failure
 - 输出尺寸、类型及 CPU OpenCV 结果误差
 
 在当前 CV-CUDA 0.16 外部 Tensor 路径中，`INTER_NEAREST` 和 `INTER_CUBIC`
-与 OpenCV 的舍入语义存在差异，因此暂未纳入一致性测试。
+与 OpenCV 的舍入语义存在差异，测试仅验证这两种模式能够正确执行并产生
+正确尺寸和类型；`INTER_LINEAR`、`INTER_AREA` 还会进行像素误差比较。
 
-当前尚未实现 `CV_8UC1` resize、完整引用计数语义、显存池和 Python `cv2.mx` 绑定。
+当前尚未实现完整引用计数语义、显存池和 Python `cv2.mx` 绑定。

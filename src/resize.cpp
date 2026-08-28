@@ -13,7 +13,7 @@ void check(NVCVStatus status, const char *operation) {
 
 NVCVDataType dtypeFor(int cvType) {
     switch (cvType) {
-    case CV_8UC1: throw std::invalid_argument("cv::mx::resize currently requires packed 3/4-channel input");
+    case CV_8UC1: return NVCV_DATA_TYPE_U8;
     // Channels are represented by HWC shape/layout. Using 3U8/4U8 here would
     // encode the channel count twice and makes the tensor descriptor invalid.
     case CV_8UC3: return NVCV_DATA_TYPE_U8;
