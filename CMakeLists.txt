@@ -46,7 +46,8 @@ endforeach()
 
 add_library(opencv_mx
   src/gpumat.cpp
-  src/resize.cpp)
+  src/resize.cpp
+  src/cvtcolor.cpp)
 target_include_directories(opencv_mx
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -75,6 +76,9 @@ if(BUILD_TESTS)
   target_link_libraries(mx_gpumat_test PRIVATE opencv_mx)
   add_test(NAME mx_gpumat_test COMMAND mx_gpumat_test)
   set_tests_properties(mx_gpumat_test PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+  add_executable(mx_cvtcolor_test tests/cvtcolor_test.cpp)
+  target_link_libraries(mx_cvtcolor_test PRIVATE opencv_mx)
+  add_test(NAME mx_cvtcolor_test COMMAND mx_cvtcolor_test)
 endif()
 
 if(BUILD_EXAMPLES)

@@ -48,6 +48,7 @@ cv::mx::GpuMat
 cv::mx::GpuMat::upload()
 cv::mx::GpuMat::download()
 cv::mx::resize()
+cv::mx::cvtColor()
 ```
 
 OpenCV 负责 CPU 图像读写，MACA Runtime 负责 MX-C500 显存和数据搬运，沐曦版 CV-CUDA 负责 GPU resize。
@@ -211,6 +212,7 @@ cv::imwrite("output.jpg", dst);
 - `INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
 - 同步 upload、resize、download
 - `cv::mx::Stream` 异步接口
+- `cv::mx::cvtColor()` 基础 8-bit 通道转换
 - `GpuMat` 拷贝共享所有权、ROI 视图和外部设备内存包装
 
 带 Stream 的 resize 会将 CV-CUDA 资源释放操作排入同一 MACA stream，调用会立即返回；
