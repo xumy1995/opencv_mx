@@ -1,45 +1,15 @@
 # OpenCV MX-C500 后端插件原型
 
-本仓库是一个可独立维护的 GitHub 项目，同时提供两种构建方式：
+本仓库提供 MX-C500 后端的 C++ 实现，以及可作为独立项目或 OpenCV extra module
+使用的构建方式。实现基于 MACA Runtime 和沐曦 CV-CUDA，不依赖 NVIDIA GPU。
 
-- **Standalone**：使用仓库顶层 `CMakeLists.txt` 快速编译和验证后端。
-- **OpenCV contrib 插件**：使用 `modules/mx` 作为 OpenCV extra module，和 OpenCV 主工程一起编译。
+## 一、环境准备
 
-目录结构：
-
-```text
-opencv_mx/
-├── modules/mx/       # OpenCV contrib 风格模块（推荐集成入口）
-├── include/ src/     # standalone 原型实现
-├── tests/ testdata/  # standalone 回归测试和 golden 数据
-└── README.md
-```
-
-## 下载镜像和 SDK
-
-### 1. CV-CUDA 镜像
-
-- 镜像：`cv-cuda:0.16.0-maca.ai3.8.0.10-torch2.4-py312-ubuntu22.04-amd64`
-- 下载地址：https://developer.metax-tech.com/softnova/docker?chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&package_kind=AI&dimension=docker&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=cv-cuda&frame_version=0.16.0&python_version=3.12&system=ubuntu
-
-### 2. MACA SDK
-
-- SDK 名称：`maca-sdk-3.8.2.6-deb-x86_64.tar.xz`
-- 下载地址：https://developer.metax-tech.com/softnova/download?dimension=metax&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&package_kind=SDK&chip_name=
-
-### 3. MACA CV-CUDA
-
-- SDK 名称：`maca-cv-cuda-0.16.0-py312-3.8.0.10-linux-x86_64.tar.xz`
-- 下载地址：https://developer.metax-tech.com/softnova/ai-download/cv-cuda?package_kind=AI&dimension=metax&chip_name=%E6%9B%A6%E4%BA%91C500%E7%B3%BB%E5%88%97&deliver_type=%E5%88%86%E5%B1%82%E5%8C%85&ai_frame=cv-cuda&ai_label=CV-CUDA
-
-## 加载镜像
+### 1. 启动容器
 
 ```bash
 sudo docker run -it --name opencv-mx-dev \
-  --device=/dev/dri \
-  --device=/dev/mxcd \
-  --group-add video \
-  --shm-size=16g \
+  --device=/dev/dri --device=/dev/mxcd --group-add video --shm-size=16g \
   -v /mnt/afs/xumengying/opencv_mx:/workspace/opencv_mx \
   -v /mnt/afs/xumengying/maca-cv-cuda-3.8.0.10:/opt/maca-cv-cuda:ro \
   -v /mnt/afs/xumengying/maca-sdk-3.8.2.6:/opt/maca-sdk:ro \
@@ -47,225 +17,73 @@ sudo docker run -it --name opencv-mx-dev \
   /bin/bash
 ```
 
-退出容器后再次进入：
+重新进入：
 
 ```bash
 sudo docker start opencv-mx-dev
 sudo docker exec -it opencv-mx-dev /bin/bash
 ```
 
-## 容器内构建和运行
-
-本项目实现了第一版 C++ API：
-
-```cpp
-cv::mx::GpuMat
-cv::mx::GpuMat::upload()
-cv::mx::GpuMat::download()
-cv::mx::resize()
-cv::mx::cvtColor()
-```
-
-OpenCV 负责 CPU 图像读写，MACA Runtime 负责 MX-C500 显存和数据搬运，沐曦版 CV-CUDA 负责 GPU 算子。
-
-以下步骤从已经进入 `opencv-mx-dev` 容器后开始。
-
-## 1. 确认挂载目录
-
-本仓库的 contrib 模块位于 `modules/mx`。配置 OpenCV 主工程时，
-`OPENCV_EXTRA_MODULES_PATH` 应指向仓库的 `modules` 目录：
-
-```bash
-cmake -S /workspace/opencv -B /workspace/opencv/build-mx \
-  -DOPENCV_EXTRA_MODULES_PATH=/workspace/opencv_mx/modules \
-  -DBUILD_opencv_mx=ON
-```
-
-仓库顶层 CMake 保留 standalone 构建，便于快速验证；contrib 模块和 standalone
-代码目前分别维护，后续以 `modules/mx` 为正式集成入口。
-
-`modules/mx/CMakeLists.txt` 使用 OpenCV contrib 的 `ocv_add_module`、
-`ocv_glob_module_sources` 和 `ocv_create_module`，不会修改 OpenCV 主仓库。
-
-容器启动时应已挂载：
-
-```text
-/workspace/opencv_mx   项目源码
-/opt/maca-cv-cuda     maca-cv-cuda 3.8.0.10 开发包
-/opt/maca-sdk         MACA SDK 3.8.2.6 开发包
-```
-
-容器内确认：
-
-```bash
-test -f /workspace/opencv_mx/CMakeLists.txt
-test -f /opt/maca-cv-cuda/ai_deb/cvcuda-dev-0.16.0-cuda11-x86_64-linux.deb
-test -f /opt/maca-sdk/deb/mcruntime_3.8.2.6.amd64.deb
-echo "mounts OK"
-```
-
-## 2. 安装系统构建依赖
+### 2. 安装依赖
 
 ```bash
 apt-get update
-apt-get install -y \
-  build-essential \
-  cmake \
-  pkg-config \
-  libopencv-dev
+apt-get install -y build-essential cmake pkg-config libopencv-dev python3-dev
+python -m pip install -U "pybind11>=2.12"
 ```
 
-本项目使用 Ubuntu 提供的 OpenCV 4.5.4 C++ 开发包。Python 的 `opencv-python` wheel 不包含 C++ 头文件和 `OpenCVConfig.cmake`，不能替代 `libopencv-dev`。
-
-## 3. 安装 CV-CUDA C++ SDK
-
-将只读挂载目录中的 deb 复制到 `/tmp`，避免 APT 的 `_apt` 读取权限警告：
+安装 CV-CUDA 和 MACA SDK 的 deb 包（从只读挂载目录复制到 `/tmp`，避免 `_apt` 权限警告）：
 
 ```bash
-cp /opt/maca-cv-cuda/ai_deb/cvcuda-lib-0.16.0-cuda11-x86_64-linux.deb /tmp/
-cp /opt/maca-cv-cuda/ai_deb/cvcuda-dev-0.16.0-cuda11-x86_64-linux.deb /tmp/
-chmod 644 /tmp/cvcuda-*.deb
-
-apt-get install -y \
-  /tmp/cvcuda-lib-0.16.0-cuda11-x86_64-linux.deb \
-  /tmp/cvcuda-dev-0.16.0-cuda11-x86_64-linux.deb
+cp /opt/maca-cv-cuda/ai_deb/cvcuda-*.deb /tmp/
+cp /opt/maca-sdk/deb/{mcruntime,mcanalyzer,commonlib,mccompiler,cu-bridge}_3.8.2.6.amd64.deb /tmp/
+chmod 644 /tmp/*.deb
+apt-get install -y /tmp/cvcuda-*.deb /tmp/{mcruntime,mcanalyzer,commonlib,mccompiler,cu-bridge}_3.8.2.6.amd64.deb
 ```
 
-安装后得到：
+确认关键路径：`/opt/maca-ai/cvcuda0`、`/opt/maca-3.8.2`，以及 OpenCV 的
+`/usr/lib/x86_64-linux-gnu/cmake/opencv4`。
 
-```text
-/opt/maca-ai/cvcuda0/include/cvcuda
-/opt/maca-ai/cvcuda0/include/nvcv
-/opt/maca-ai/cvcuda0/lib/x86_64-linux-gnu
-```
+## 二、编译和安装（二选一）
 
-## 4. 安装最小 MACA C++ 开发组件
+### 方案 A：Standalone 独立构建
 
-当前项目需要以下五个包：
-
-```bash
-cp /opt/maca-sdk/deb/mcruntime_3.8.2.6.amd64.deb /tmp/
-cp /opt/maca-sdk/deb/mcanalyzer_3.8.2.6.amd64.deb /tmp/
-cp /opt/maca-sdk/deb/commonlib_3.8.2.6.amd64.deb /tmp/
-cp /opt/maca-sdk/deb/mccompiler_3.8.2.6.amd64.deb /tmp/
-cp /opt/maca-sdk/deb/cu-bridge_3.8.2.6.amd64.deb /tmp/
-chmod 644 /tmp/*.amd64.deb
-
-apt-get install -y \
-  /tmp/mcruntime_3.8.2.6.amd64.deb \
-  /tmp/mcanalyzer_3.8.2.6.amd64.deb \
-  /tmp/commonlib_3.8.2.6.amd64.deb \
-  /tmp/mccompiler_3.8.2.6.amd64.deb \
-  /tmp/cu-bridge_3.8.2.6.amd64.deb
-```
-
-这些包分别提供 MACA Runtime、公共导出头、基础类型、编译器公共头以及 CV-CUDA 所需的 CUDA 兼容头和 `libruntime_cu.so`。
-
-## 5. 验证开发环境
-
-```bash
-test -f /usr/lib/x86_64-linux-gnu/cmake/opencv4/OpenCVConfig.cmake
-test -f /opt/maca-ai/cvcuda0/include/cvcuda/OpResize.h
-test -f /opt/maca-ai/cvcuda0/include/nvcv/Tensor.h
-test -f /opt/maca-3.8.2/include/mcr/mc_runtime_api.h
-test -f /opt/maca-3.8.2/tools/cu-bridge/include/cuda_runtime.h
-test -f /opt/maca-3.8.2/lib/libmcruntime.so
-test -f /opt/maca-3.8.2/lib/libruntime_cu.so
-echo "development environment OK"
-```
-
-## 6. Standalone 配置和编译
+适合快速验证本仓库。默认包含 Python 扩展（`BUILD_PYTHON=ON`）。
 
 ```bash
 cd /workspace/opencv_mx
-rm -rf build
-
-cmake -S . -B build \
-  -DCMAKE_BUILD_TYPE=Release \
+rm -rf build build-install
+PYBIND11_DIR=$(python -c 'import pybind11; print(pybind11.get_cmake_dir())')
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_PYTHON=ON -Dpybind11_DIR="$PYBIND11_DIR" \
   -DOpenCV_DIR=/usr/lib/x86_64-linux-gnu/cmake/opencv4 \
-  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0 \
-  -DMACA_PATH=/opt/maca-3.8.2
-
+  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0 -DMACA_PATH=/opt/maca-3.8.2
 cmake --build build -j"$(nproc)"
+cmake --install build --prefix /opt/opencv-mx
 ```
 
-成功时应看到：
+### 方案 B：OpenCV contrib 插件构建
 
-```text
-[100%] Built target mx_resize_example
-```
-
-## 7. 作为 OpenCV contrib 插件编译
-
-需要准备匹配版本的 OpenCV 源码，并将本仓库挂载为 `/workspace/opencv_mx`：
+适合将本仓库作为独立 GitHub repo，与 OpenCV 一起编译。模块入口为
+`modules/mx`，不要再配置本仓库顶层 CMake：
 
 ```bash
+rm -rf /workspace/opencv/build-mx
 cmake -S /workspace/opencv -B /workspace/opencv/build-mx \
   -DOPENCV_EXTRA_MODULES_PATH=/workspace/opencv_mx/modules \
-  -DBUILD_opencv_mx=ON \
+  -DBUILD_opencv_mx=ON -DBUILD_opencv_python3=ON \
   -DCMAKE_BUILD_TYPE=Release \
-  -DMACA_PATH=/opt/maca-3.8.2 \
-  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0
+  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0 -DMACA_PATH=/opt/maca-3.8.2
 cmake --build /workspace/opencv/build-mx -j"$(nproc)"
+cmake --install /workspace/opencv/build-mx --prefix /opt/opencv-mx
 ```
 
-OpenCV 主工程会创建 `opencv_mx` 模块目标并统一处理安装、测试和 Python
-绑定生成。插件模式不使用仓库顶层 standalone 的安装目标。
+插件模式由 OpenCV 主工程统一生成 `cv2` Python 模块；Standalone 的 pybind11
+扩展名为 `opencv_mx`，两者不是同一个 Python API。
 
-## 8. 运行 resize 示例
+## 三、运行 test 模块
 
-准备一张输入图片，例如：
-
-```text
-/workspace/opencv_mx/input.jpg
-```
-
-运行：
-
-```bash
-cd /workspace/opencv_mx
-./build/mx_resize_example input.jpg output.jpg
-```
-
-对于 `640 × 480` 输入，预期输出信息为：
-
-```text
-640x480 -> 320x240
-```
-
-
-## 9. C++ 使用方式
-
-```cpp
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/mx/imgproc.hpp>
-
-cv::Mat src = cv::imread("input.jpg", cv::IMREAD_COLOR);
-
-cv::mx::GpuMat mxSrc;
-cv::mx::GpuMat mxDst;
-
-mxSrc.upload(src);
-cv::mx::resize(mxSrc, mxDst, cv::Size(320, 240));
-
-cv::Mat dst;
-mxDst.download(dst);
-cv::imwrite("output.jpg", dst);
-```
-
-当前支持：
-
-- `CV_8UC1`、`CV_8UC3`、`CV_8UC4`（packed HWC）
-- `INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
-- 同步 upload、resize、download
-- `cv::mx::Stream` 异步接口
-- `cv::mx::cvtColor()` 基础 8-bit 通道转换
-- `GpuMat` 拷贝共享所有权、ROI 视图和外部设备内存包装
-
-带 Stream 的 resize 会将 CV-CUDA 资源释放操作排入同一 MACA stream，调用会立即返回；
-在读取结果或复用相关缓冲区前调用 `stream.waitForCompletion()`。不传 Stream 时接口保持同步。
-
-## 10. 运行自动化测试
+仅 Standalone 构建提供本仓库测试目标：
 
 ```bash
 cd /workspace/opencv_mx
@@ -273,139 +91,44 @@ cmake --build build -j"$(nproc)"
 ctest --test-dir build --output-on-failure
 ```
 
-测试内容分为以下几类：
+测试包括：
 
-1. **Resize golden 回归测试**
-   - 输入类型：`CV_8UC1`、`CV_8UC3`、`CV_8UC4`
-   - 插值方式：`INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
-   - 规模：3 种真实输入图片 × 4 种插值，共 12 个用例
-   - 校验：输出尺寸、类型及每个像素与 MX CV-CUDA 0.16 golden 输出完全一致
-2. **Golden 数据说明**
-   - 文件目录：`testdata/golden/maca3.8.0.10-cvcuda0.16.0/`
-   - 由同版本 MX CV-CUDA Python 接口生成
-   - 测试运行时不依赖 Python、Torch 或 NVIDIA CUDA
-   - 由于 MX CV-CUDA 与 OpenCV 的坐标规则不完全相同，不使用 `cv::resize()` 作为参考
-3. **GpuMat/Stream 测试（`mx_gpumat_test`）**
-   - 尺寸、类型和通道查询
-   - `create()` 内存复用、共享拷贝和 ROI 元数据
-   - ROI 下载
-   - Stream 异步 upload/download
-   - 运行测试需要实际可用的 MX-C500 设备
-4. **cvtColor 测试（`mx_cvtcolor_test`）**
-   - 使用真实 MX-C500 设备执行 `cv::COLOR_BGR2RGB`
-   - 校验输出类型、尺寸以及每个像素与 OpenCV CPU 转换结果一致
-   - 覆盖同步 `GpuMat::upload()`、`cvtColor()` 和 `download()` 路径
-5. **测试数据和生命周期约束**
-   - 输入图片：`testdata/input_gray.png`、`input_bgr.png`、`input_bgra.png`
-   - 输入及 golden 输出均随仓库提交，其他环境可直接运行同一套测试
-   - 异步操作期间必须保持源和目标 `GpuMat` 有效且不得重新分配
+- `mx_resize_test`：C1/C3/C4 × 4 种插值，共 12 个 MX CV-CUDA golden 用例。
+- `mx_gpumat_test`：尺寸/类型、内存复用、共享拷贝、ROI、异步 upload/download。
+- `mx_cvtcolor_test`：MX-C500 上的 BGR→RGB 转换及像素一致性。
 
-当前尚未完成官方 `cv2` Python generator 集成。仓库中的 Python 目录仅是实验性
-pybind11 原型；正式插件模式应由 OpenCV 主工程生成并注册 Python API。显存池也尚未实现。
+golden 文件位于 `testdata/golden/maca3.8.0.10-cvcuda0.16.0/`，测试不使用
+`cv::resize()` 作为参考，也不依赖 Python、Torch 或 NVIDIA CUDA。
 
-## 11. Python 使用（实验性 standalone 绑定）
+## 四、Example（C++）
 
-仓库顶层提供一个基于 pybind11 的实验性 Python 扩展，模块名为
-`opencv_mx`，不修改系统 `cv2`。先在容器内安装依赖：
+Standalone 编译后运行：
 
 ```bash
-apt-get update
-apt-get install -y pybind11-dev python3-dev
+cd /workspace/opencv_mx
+./build/mx_resize_example input.jpg output.jpg
 ```
 
-配置并编译：
+可选参数为插值方式、读取模式和输出尺寸：
 
 ```bash
-cmake -S /workspace/opencv_mx -B /workspace/opencv_mx/build \
-  -DBUILD_PYTHON=ON \
-  -DOpenCV_DIR=/usr/lib/x86_64-linux-gnu/cmake/opencv4 \
-  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0 \
-  -DMACA_PATH=/opt/maca-3.8.2
-cmake --build /workspace/opencv_mx/build -j"$(nproc)"
+./build/mx_resize_example input.jpg output.jpg 1 1 320 240
 ```
 
-将扩展所在目录加入 `PYTHONPATH` 后调用：
-
-```bash
-export PYTHONPATH=/workspace/opencv_mx/build:$PYTHONPATH
-python - <<'PY'
-import cv2
-import numpy as np
-import opencv_mx as mx
-
-image = cv2.imread("/workspace/opencv_mx/testdata/input_bgr.png")
-gpu = mx.GpuMat()
-gpu.upload(image)
-resized = mx.resize(gpu, (320, 240), cv2.INTER_LINEAR)
-rgb = mx.cvtColor(resized, cv2.COLOR_BGR2RGB)
-result = rgb.download()
-print(result.shape, result.dtype)
-PY
-```
-
-该原型目前支持 `uint8` 的 HxW、HxWx3、HxWx4 NumPy 数组，以及 `resize()`、
-`cvtColor()` 和 `GpuMat.download()`。它需要 MX-C500 设备和本项目的 MACA/CV-CUDA
-运行库。它不是最终的 `cv2.mx` 接口；contrib 插件模式的 Python API 仍应接入
-OpenCV 官方 Python bindings generator。
-
-请安装与 Python 3.12 兼容的新版 pybind11（建议 `pybind11>=2.12`）：
-
-```bash
-python -m pip install -U "pybind11>=2.12"
-```
-
-然后显式开启 `-DBUILD_PYTHON=ON`。插件模式的 Python
-绑定不使用此实验性模块，而由 OpenCV 主工程统一生成。
-
-## 12. Standalone CMake 安装与集成
-
-可通过选项关闭测试或示例：
-
-```bash
-cmake -S . -B build \
-  -DBUILD_TESTS=OFF \
-  -DBUILD_EXAMPLES=OFF \
-  ...
-```
-
-安装库和头文件：
-
-```bash
-cmake --install build --prefix /opt/opencv-mx
-```
-
-安装后，其他 CMake 项目可使用：
-
-```cmake
-find_package(OpenCVMX CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE OpenCVMX::opencv_mx)
-```
-
-建议先验证安装产物：
-
-```bash
-rm -rf /tmp/opencv-mx-install
-cmake --install build --prefix /tmp/opencv-mx-install
-```
-
-安装导出目前提供静态库、头文件和 `OpenCVMXConfig.cmake`；依赖的 OpenCV、MACA
-Runtime、CV-CUDA 仍需在目标环境中安装并可被链接器/运行时找到。
-
-运行时仍需确保 MACA Runtime、CV-CUDA 及其动态库位于系统库搜索路径中（或配置 `LD_LIBRARY_PATH`）。
-
-## 13. GpuMat 与 Stream 示例
+基本 C++ 调用：
 
 ```cpp
-cv::mx::Stream stream;
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/mx/imgproc.hpp>
+
+cv::Mat input = cv::imread("input.jpg", cv::IMREAD_COLOR);
 cv::mx::GpuMat src, dst;
-src.upload(input, stream);
-cv::mx::resize(src, dst, cv::Size(320, 240), cv::INTER_LINEAR, stream);
-stream.waitForCompletion();
+src.upload(input);
+cv::mx::resize(src, dst, cv::Size(320, 240));
+cv::Mat output;
 dst.download(output);
+cv::imwrite("output.jpg", output);
 ```
 
-ROI 是共享底层显存的视图，不会复制数据：
-
-```cpp
-cv::mx::GpuMat roi(src, cv::Rect(10, 10, 320, 240));
-```
+支持 `CV_8UC1/3/4` packed HWC、四种 resize 插值、基础 8-bit `cvtColor`、
+同步和 Stream 异步接口。异步操作完成前，源/目标 `GpuMat` 必须保持有效且不得重新分配。

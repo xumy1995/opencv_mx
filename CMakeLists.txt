@@ -66,7 +66,7 @@ add_library(OpenCVMX::opencv_mx ALIAS opencv_mx)
 
 option(BUILD_TESTS "Build MX backend tests" ON)
 option(BUILD_EXAMPLES "Build MX backend examples" ON)
-option(BUILD_PYTHON "Build experimental pybind11 Python bindings" OFF)
+option(BUILD_PYTHON "Build experimental pybind11 Python bindings" ON)
 
 if(BUILD_TESTS)
   enable_testing()
