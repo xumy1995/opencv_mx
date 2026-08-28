@@ -57,6 +57,18 @@ OpenCV 负责 CPU 图像读写，MACA Runtime 负责 MX-C500 显存和数据搬�
 
 ## 1. 确认挂载目录
 
+本仓库也可以作为 OpenCV contrib 风格的独立扩展仓库使用。模块位于
+`modules/mx`，配置 OpenCV 主工程时指定：
+
+```bash
+cmake -S /workspace/opencv -B /workspace/opencv/build-mx \
+  -DOPENCV_EXTRA_MODULES_PATH=/workspace/opencv_mx/modules \
+  -DBUILD_opencv_mx=ON
+```
+
+仓库顶层 CMake 仍保留 standalone 构建，便于快速验证；两种模式共享
+`modules/mx` 下的实现。
+
 容器启动时应已挂载：
 
 ```text
