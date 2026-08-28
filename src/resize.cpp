@@ -75,6 +75,14 @@ void resize(const GpuMat &src, GpuMat &dst, cv::Size dsize,
     try {
         check(cvcudaResizeSubmit(op, stream, srcTensor, dstTensor,
                                  interpolationFor(interpolation)), "cvcudaResizeSubmit");
+        // Submit is asynchronous. Tensor and operator handles must stay alive
+        // until the queued work has completed; destroying them immediately
+        // can corrupt results while the kernel is still consuming metadata.
+        mcError_t syncStatus = stream ? mcStreamSynchronize(stream)
+                                      : mcDeviceSynchronize();
+        if (syncStatus != mcSuccess)
+            throw std::runtime_error(std::string("resize synchronize failed: ")
+                                     + mcGetErrorString(syncStatus));
     } catch (...) {
         nvcvOperatorDestroy(op);
         throw;

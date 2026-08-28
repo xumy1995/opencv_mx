@@ -3,8 +3,8 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-    if (argc < 3 || argc > 5) {
-        std::cerr << "usage: mx_resize_example INPUT OUTPUT [interpolation] [imread_mode]\n";
+    if (argc < 3 || argc > 7) {
+        std::cerr << "usage: mx_resize_example INPUT OUTPUT [interpolation] [imread_mode] [width height]\n";
         return 2;
     }
     int interpolation = argc >= 4 ? std::stoi(argv[3]) : cv::INTER_LINEAR;
@@ -16,7 +16,9 @@ int main(int argc, char **argv) {
     }
     cv::mx::GpuMat mxSrc, mxDst;
     mxSrc.upload(src);
-    cv::mx::resize(mxSrc, mxDst, cv::Size(src.cols / 2, src.rows / 2), 0, 0, interpolation);
+    cv::Size outputSize = argc >= 7 ? cv::Size(std::stoi(argv[5]), std::stoi(argv[6]))
+                                    : cv::Size(src.cols / 2, src.rows / 2);
+    cv::mx::resize(mxSrc, mxDst, outputSize, 0, 0, interpolation);
     cv::Mat dst;
     mxDst.download(dst);
     if (!cv::imwrite(argv[2], dst)) return 1;
