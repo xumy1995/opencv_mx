@@ -1,5 +1,6 @@
 # CMake build trees and generated files
 /build/
+/build-install/
 /cmake-build-*/
 CMakeCache.txt
 CMakeFiles/
