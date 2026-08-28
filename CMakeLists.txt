@@ -7,13 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 
 find_path(CVCUDA_INCLUDE_DIR cvcuda/OpResize.h
-  HINTS ENV CVCUDA_ROOT
+  HINTS ${CVCUDA_ROOT} ENV CVCUDA_ROOT
   PATH_SUFFIXES include)
 find_library(CVCUDA_LIBRARY NAMES cvcuda
-  HINTS ENV CVCUDA_ROOT
+  HINTS ${CVCUDA_ROOT} ENV CVCUDA_ROOT
   PATH_SUFFIXES lib lib64)
 find_library(NVCV_TYPES_LIBRARY NAMES nvcv_types
-  HINTS ENV CVCUDA_ROOT
+  HINTS ${CVCUDA_ROOT} ENV CVCUDA_ROOT
   PATH_SUFFIXES lib lib64)
 
 # Native MACA Runtime used for device allocation, copies and streams.

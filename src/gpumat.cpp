@@ -85,4 +85,16 @@ void GpuMat::download(cv::OutputArray output, mcStream_t stream) const {
     check(stream ? mcStreamSynchronize(stream) : mcDeviceSynchronize(), "download synchronize");
 }
 
+GpuMat GpuMat::clone() const {
+    GpuMat out(rows_, cols_, type_);
+    mcMemcpy2D(out.data_, out.step_, data_, step_, rowBytes(), rows_, mcMemcpyDeviceToDevice);
+    check(mcDeviceSynchronize(), "mcDeviceSynchronize clone");
+    return out;
+}
+
+void GpuMat::locateROI(cv::Size &wholeSize, cv::Point &ofs) const {
+    wholeSize = cv::Size(cols_, rows_);
+    ofs = cv::Point(0, 0);
+}
+
 } // namespace cv::mx

@@ -37,6 +37,8 @@ public:
     void release() noexcept;
     void upload(cv::InputArray src, mcStream_t stream = nullptr);
     void download(cv::OutputArray dst, mcStream_t stream = nullptr) const;
+    GpuMat clone() const;
+    void locateROI(cv::Size &wholeSize, cv::Point &ofs) const;
 
     bool empty() const noexcept { return data_ == nullptr; }
     int rows() const noexcept { return rows_; }
