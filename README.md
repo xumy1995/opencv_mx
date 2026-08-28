@@ -236,10 +236,15 @@ golden 文件位于
 接口生成；测试运行时不依赖 Python、Torch 或 NVIDIA CUDA。由于 MX CV-CUDA
 与 OpenCV 的坐标规则并不完全相同，本测试不使用 `cv::resize()` 作为参考。
 
-当前尚未实现显存池和 Python `cv2.mx` 绑定。
+当前尚未实现显存池和 Python `cv2.mx` 绑定。异步操作期间，调用者必须保持源和目标
+`GpuMat` 有效且不得重新分配；完成后再释放或复用相关对象。
 
 测试输入图片保存在 `testdata/input_gray.png`、`input_bgr.png` 和
 `input_bgra.png`，对应的 golden 输出也随仓库提交，其他环境可直接运行同一套测试。
+
+此外，`mx_gpumat_test` 覆盖 GpuMat 的尺寸/类型查询、`create()` 内存复用、共享拷贝、
+ROI 元数据、ROI 下载，以及 Stream 异步 upload/download。运行测试时需要实际可用的
+MX-C500 设备。
 
 ## 10. CMake 安装与集成
 
@@ -264,6 +269,16 @@ cmake --install build --prefix /opt/opencv-mx
 find_package(OpenCVMX CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE OpenCVMX::opencv_mx)
 ```
+
+建议先验证安装产物：
+
+```bash
+rm -rf /tmp/opencv-mx-install
+cmake --install build --prefix /tmp/opencv-mx-install
+```
+
+安装导出目前提供静态库、头文件和 `OpenCVMXConfig.cmake`；依赖的 OpenCV、MACA
+Runtime、CV-CUDA 仍需在目标环境中安装并可被链接器/运行时找到。
 
 运行时仍需确保 MACA Runtime、CV-CUDA 及其动态库位于系统库搜索路径中（或配置 `LD_LIBRARY_PATH`）。
 
