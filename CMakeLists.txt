@@ -60,6 +60,7 @@ target_link_libraries(opencv_mx
 add_executable(mx_resize_test tests/resize_test.cpp)
 target_link_libraries(mx_resize_test PRIVATE opencv_mx)
 add_test(NAME mx_resize_test COMMAND mx_resize_test)
+set_tests_properties(mx_resize_test PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_executable(mx_resize_example examples/resize.cpp)
 target_link_libraries(mx_resize_example PRIVATE opencv_mx)

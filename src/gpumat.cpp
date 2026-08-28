@@ -17,6 +17,13 @@ Stream::~Stream() { if (handle_) mcStreamDestroy(handle_); }
 Stream::Stream(Stream&& o) noexcept : handle_(std::exchange(o.handle_, nullptr)) {}
 Stream& Stream::operator=(Stream&& o) noexcept { if (this != &o) { if (handle_) mcStreamDestroy(handle_); handle_=std::exchange(o.handle_, nullptr); } return *this; }
 void Stream::waitForCompletion() const { check(mcStreamSynchronize(handle_), "mcStreamSynchronize"); }
+bool Stream::queryIfComplete() const {
+    mcError_t status = mcStreamQuery(handle_);
+    if (status == mcSuccess) return true;
+    if (status == mcErrorNotReady) return false;
+    check(status, "mcStreamQuery");
+    return false;
+}
 
 GpuMat::~GpuMat() = default;
 

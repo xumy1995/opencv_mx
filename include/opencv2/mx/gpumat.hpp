@@ -14,6 +14,8 @@ public:
     Stream(Stream&&) noexcept;
     Stream& operator=(Stream&&) noexcept;
     void waitForCompletion() const;
+    bool queryIfComplete() const;
+    static mcStream_t Null() noexcept { return nullptr; }
     mcStream_t nativeHandle() const noexcept { return handle_; }
 private:
     mcStream_t handle_ = nullptr;
@@ -41,6 +43,8 @@ public:
     int cols() const noexcept { return cols_; }
     int type() const noexcept { return type_; }
     size_t step() const noexcept { return step_; }
+    size_t rowBytes() const noexcept { return cols_ > 0 ? cols_ * CV_ELEM_SIZE(type_) : 0; }
+    bool isContinuous() const noexcept { return empty() || step_ == rowBytes(); }
     void *data() noexcept { return data_; }
     const void *data() const noexcept { return data_; }
 
