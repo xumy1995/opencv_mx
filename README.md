@@ -244,7 +244,11 @@ ctest --test-dir build --output-on-failure
    - ROI 下载
    - Stream 异步 upload/download
    - 运行测试需要实际可用的 MX-C500 设备
-4. **测试数据和生命周期约束**
+4. **cvtColor 测试（`mx_cvtcolor_test`）**
+   - 使用真实 MX-C500 设备执行 `cv::COLOR_BGR2RGB`
+   - 校验输出类型、尺寸以及每个像素与 OpenCV CPU 转换结果一致
+   - 覆盖同步 `GpuMat::upload()`、`cvtColor()` 和 `download()` 路径
+5. **测试数据和生命周期约束**
    - 输入图片：`testdata/input_gray.png`、`input_bgr.png`、`input_bgra.png`
    - 输入及 golden 输出均随仓库提交，其他环境可直接运行同一套测试
    - 异步操作期间必须保持源和目标 `GpuMat` 有效且不得重新分配
