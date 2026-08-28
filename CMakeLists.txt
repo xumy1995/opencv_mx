@@ -57,6 +57,10 @@ target_link_libraries(opencv_mx
   PUBLIC ${OpenCV_LIBS} ${MX_RUNTIME_LIBRARY} ${MX_CUDA_BRIDGE_LIBRARY}
   PRIVATE ${CVCUDA_LIBRARY} ${NVCV_TYPES_LIBRARY})
 
+add_executable(mx_resize_test tests/resize_test.cpp)
+target_link_libraries(mx_resize_test PRIVATE opencv_mx)
+add_test(NAME mx_resize_test COMMAND mx_resize_test)
+
 add_executable(mx_resize_example examples/resize.cpp)
 target_link_libraries(mx_resize_example PRIVATE opencv_mx)
 

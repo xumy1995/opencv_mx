@@ -18,6 +18,7 @@ compile_commands.json
 # Local test inputs and outputs
 /input.jpg
 /output.jpg
+/tests/*.jpg
 
 # Crash dumps and editor files
 core

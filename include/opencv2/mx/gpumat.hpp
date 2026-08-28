@@ -2,8 +2,22 @@
 
 #include <opencv2/core.hpp>
 #include <mcr/mc_runtime_api.h>
+#include <memory>
 
 namespace cv::mx {
+
+class Stream {
+public:
+    Stream();
+    ~Stream();
+    Stream(const Stream&) = delete;
+    Stream(Stream&&) noexcept;
+    Stream& operator=(Stream&&) noexcept;
+    void waitForCompletion() const;
+    mcStream_t nativeHandle() const noexcept { return handle_; }
+private:
+    mcStream_t handle_ = nullptr;
+};
 
 class GpuMat {
 public:
@@ -11,10 +25,11 @@ public:
     GpuMat(int rows, int cols, int type) { create(rows, cols, type); }
     ~GpuMat();
 
-    GpuMat(const GpuMat &) = delete;
-    GpuMat &operator=(const GpuMat &) = delete;
+    GpuMat(const GpuMat &) = default;
+    GpuMat &operator=(const GpuMat &) = default;
     GpuMat(GpuMat &&other) noexcept;
     GpuMat &operator=(GpuMat &&other) noexcept;
+    GpuMat(const GpuMat &parent, cv::Rect roi);
 
     void create(int rows, int cols, int type);
     void release() noexcept;
@@ -35,6 +50,7 @@ private:
     int type_ = -1;
     size_t step_ = 0;
     void *data_ = nullptr;
+    std::shared_ptr<void> owner_;
 };
 
 } // namespace cv::mx

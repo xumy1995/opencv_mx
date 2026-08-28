@@ -12,7 +12,13 @@ void check(mcError_t status, const char *operation) {
 
 namespace cv::mx {
 
-GpuMat::~GpuMat() { release(); }
+Stream::Stream() { check(mcStreamCreate(&handle_), "mcStreamCreate"); }
+Stream::~Stream() { if (handle_) mcStreamDestroy(handle_); }
+Stream::Stream(Stream&& o) noexcept : handle_(std::exchange(o.handle_, nullptr)) {}
+Stream& Stream::operator=(Stream&& o) noexcept { if (this != &o) { if (handle_) mcStreamDestroy(handle_); handle_=std::exchange(o.handle_, nullptr); } return *this; }
+void Stream::waitForCompletion() const { check(mcStreamSynchronize(handle_), "mcStreamSynchronize"); }
+
+GpuMat::~GpuMat() = default;
 
 GpuMat::GpuMat(GpuMat &&o) noexcept { *this = std::move(o); }
 
@@ -24,8 +30,14 @@ GpuMat &GpuMat::operator=(GpuMat &&o) noexcept {
         type_ = std::exchange(o.type_, -1);
         step_ = std::exchange(o.step_, 0);
         data_ = std::exchange(o.data_, nullptr);
+        owner_ = std::move(o.owner_);
     }
     return *this;
+}
+
+GpuMat::GpuMat(const GpuMat &p, cv::Rect roi) : rows_(roi.height), cols_(roi.width), type_(p.type_), step_(p.step_), owner_(p.owner_) {
+    CV_Assert(roi.x >= 0 && roi.y >= 0 && roi.x + roi.width <= p.cols_ && roi.y + roi.height <= p.rows_);
+    data_ = static_cast<unsigned char*>(p.data_) + roi.y * p.step_ + roi.x * CV_ELEM_SIZE(type_);
 }
 
 void GpuMat::create(int rows, int cols, int type) {
@@ -36,10 +48,11 @@ void GpuMat::create(int rows, int cols, int type) {
     cols_ = cols;
     type_ = type;
     check(mcMallocPitch(&data_, &step_, cols * CV_ELEM_SIZE(type), rows), "mcMallocPitch");
+    owner_ = std::shared_ptr<void>(data_, [](void *p){ if (p) mcFree(p); });
 }
 
 void GpuMat::release() noexcept {
-    if (data_) mcFree(data_);
+    owner_.reset();
     data_ = nullptr;
     rows_ = cols_ = 0;
     type_ = -1;
