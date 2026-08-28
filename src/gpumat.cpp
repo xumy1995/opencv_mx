@@ -38,13 +38,24 @@ GpuMat &GpuMat::operator=(GpuMat &&o) noexcept {
         step_ = std::exchange(o.step_, 0);
         data_ = std::exchange(o.data_, nullptr);
         owner_ = std::move(o.owner_);
+        wholeSize_ = std::exchange(o.wholeSize_, {});
+        offset_ = std::exchange(o.offset_, {});
     }
     return *this;
 }
 
-GpuMat::GpuMat(const GpuMat &p, cv::Rect roi) : rows_(roi.height), cols_(roi.width), type_(p.type_), step_(p.step_), owner_(p.owner_) {
+GpuMat::GpuMat(const GpuMat &p, cv::Rect roi)
+    : rows_(roi.height), cols_(roi.width), type_(p.type_), step_(p.step_),
+      owner_(p.owner_), wholeSize_(p.wholeSize_), offset_(p.offset_ + roi.tl()) {
     CV_Assert(roi.x >= 0 && roi.y >= 0 && roi.x + roi.width <= p.cols_ && roi.y + roi.height <= p.rows_);
     data_ = static_cast<unsigned char*>(p.data_) + roi.y * p.step_ + roi.x * CV_ELEM_SIZE(type_);
+}
+
+GpuMat::GpuMat(int rows, int cols, int type, void *deviceData, size_t step)
+    : rows_(rows), cols_(cols), type_(type), step_(step), data_(deviceData),
+      wholeSize_(cols, rows) {
+    CV_Assert(rows > 0 && cols > 0 && deviceData != nullptr);
+    CV_Assert(step >= cols * CV_ELEM_SIZE(type));
 }
 
 void GpuMat::create(int rows, int cols, int type) {
@@ -56,6 +67,8 @@ void GpuMat::create(int rows, int cols, int type) {
     type_ = type;
     check(mcMallocPitch(&data_, &step_, cols * CV_ELEM_SIZE(type), rows), "mcMallocPitch");
     owner_ = std::shared_ptr<void>(data_, [](void *p){ if (p) mcFree(p); });
+    wholeSize_ = cv::Size(cols, rows);
+    offset_ = {};
 }
 
 void GpuMat::release() noexcept {
@@ -64,6 +77,12 @@ void GpuMat::release() noexcept {
     rows_ = cols_ = 0;
     type_ = -1;
     step_ = 0;
+    wholeSize_ = {};
+    offset_ = {};
+}
+
+void GpuMat::upload(cv::InputArray src, const Stream &stream) {
+    upload(src, stream.nativeHandle());
 }
 
 void GpuMat::upload(cv::InputArray input, mcStream_t stream) {
@@ -73,6 +92,10 @@ void GpuMat::upload(cv::InputArray input, mcStream_t stream) {
                             src.cols * src.elemSize(), src.rows,
                             mcMemcpyHostToDevice, stream), "mcMemcpy2DAsync H2D");
     if (!stream) check(mcDeviceSynchronize(), "mcDeviceSynchronize");
+}
+
+void GpuMat::download(cv::OutputArray dst, const Stream &stream) const {
+    download(dst, stream.nativeHandle());
 }
 
 void GpuMat::download(cv::OutputArray output, mcStream_t stream) const {
@@ -87,14 +110,15 @@ void GpuMat::download(cv::OutputArray output, mcStream_t stream) const {
 
 GpuMat GpuMat::clone() const {
     GpuMat out(rows_, cols_, type_);
-    mcMemcpy2D(out.data_, out.step_, data_, step_, rowBytes(), rows_, mcMemcpyDeviceToDevice);
+    check(mcMemcpy2D(out.data_, out.step_, data_, step_, rowBytes(), rows_,
+                     mcMemcpyDeviceToDevice), "mcMemcpy2D D2D");
     check(mcDeviceSynchronize(), "mcDeviceSynchronize clone");
     return out;
 }
 
 void GpuMat::locateROI(cv::Size &wholeSize, cv::Point &ofs) const {
-    wholeSize = cv::Size(cols_, rows_);
-    ofs = cv::Point(0, 0);
+    wholeSize = wholeSize_;
+    ofs = offset_;
 }
 
 } // namespace cv::mx

@@ -4,11 +4,18 @@
 #include <nvcv/Tensor.h>
 #include <nvcv/TensorData.h>
 #include <stdexcept>
+#include <memory>
 
 namespace {
-void check(NVCVStatus status, const char *operation) {
+void checkNvcv(NVCVStatus status, const char *operation) {
     if (status != NVCV_SUCCESS)
         throw std::runtime_error(std::string(operation) + " failed with status " + std::to_string(status));
+}
+
+void checkMaca(mcError_t status, const char *operation) {
+    if (status != mcSuccess)
+        throw std::runtime_error(std::string(operation) + ": "
+                                 + mcGetErrorString(status));
 }
 
 NVCVDataType dtypeFor(int cvType) {
@@ -50,13 +57,34 @@ public:
         data.buffer.strided.strides[0] = mat.step();
         data.buffer.strided.strides[1] = CV_ELEM_SIZE(mat.type());
         data.buffer.strided.strides[2] = CV_ELEM_SIZE1(mat.type());
-        check(nvcvTensorWrapDataConstruct(&data, nullptr, nullptr, &handle_), "nvcvTensorWrapDataConstruct");
+        checkNvcv(nvcvTensorWrapDataConstruct(&data, nullptr, nullptr, &handle_),
+                  "nvcvTensorWrapDataConstruct");
     }
     ~TensorHandle() { if (handle_) nvcvTensorDecRef(handle_, nullptr); }
     operator NVCVTensorHandle() const { return handle_; }
 private:
     NVCVTensorHandle handle_{};
 };
+
+struct ResizeResources {
+    TensorHandle src;
+    TensorHandle dst;
+    NVCVOperatorHandle op{};
+
+    ResizeResources(const cv::mx::GpuMat &srcMat, const cv::mx::GpuMat &dstMat)
+        : src(srcMat), dst(dstMat) {
+        checkNvcv(cvcudaResizeCreate(&op), "cvcudaResizeCreate");
+    }
+
+    ~ResizeResources() {
+        if (op)
+            nvcvOperatorDestroy(op);
+    }
+};
+
+void MC_CB destroyResizeResources(void *userData) {
+    delete static_cast<ResizeResources *>(userData);
+}
 }
 
 namespace cv::mx {
@@ -64,30 +92,29 @@ namespace cv::mx {
 void resize(const GpuMat &src, GpuMat &dst, cv::Size dsize,
             double fx, double fy, int interpolation, mcStream_t stream) {
     CV_Assert(!src.empty());
+    CV_Assert(src.rows() > 0 && src.cols() > 0);
     if (dsize.empty()) {
         CV_Assert(fx > 0 && fy > 0);
         dsize = cv::Size(cvRound(src.cols() * fx), cvRound(src.rows() * fy));
     }
     dst.create(dsize.height, dsize.width, src.type());
-    TensorHandle srcTensor(src), dstTensor(dst);
-    NVCVOperatorHandle op{};
-    check(cvcudaResizeCreate(&op), "cvcudaResizeCreate");
+    CV_Assert(dsize.width > 0 && dsize.height > 0);
+    auto resources = std::make_unique<ResizeResources>(src, dst);
     try {
-        check(cvcudaResizeSubmit(op, stream, srcTensor, dstTensor,
-                                 interpolationFor(interpolation)), "cvcudaResizeSubmit");
-        // Submit is asynchronous. Tensor and operator handles must stay alive
-        // until the queued work has completed; destroying them immediately
-        // can corrupt results while the kernel is still consuming metadata.
-        mcError_t syncStatus = stream ? mcStreamSynchronize(stream)
-                                      : mcDeviceSynchronize();
-        if (syncStatus != mcSuccess)
-            throw std::runtime_error(std::string("resize synchronize failed: ")
-                                     + mcGetErrorString(syncStatus));
+        checkNvcv(cvcudaResizeSubmit(resources->op, stream,
+                                     resources->src, resources->dst,
+                                     interpolationFor(interpolation)),
+                  "cvcudaResizeSubmit");
+        if (stream) {
+            checkMaca(mcLaunchHostFunc(stream, destroyResizeResources,
+                                       resources.get()), "mcLaunchHostFunc");
+            resources.release();
+        } else {
+            checkMaca(mcDeviceSynchronize(), "resize synchronize");
+        }
     } catch (...) {
-        nvcvOperatorDestroy(op);
         throw;
     }
-    nvcvOperatorDestroy(op);
 }
 
 } // namespace cv::mx

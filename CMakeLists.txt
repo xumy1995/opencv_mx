@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 project(opencv_mx VERSION 0.1.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -47,7 +49,8 @@ add_library(opencv_mx
   src/resize.cpp)
 target_include_directories(opencv_mx
   PUBLIC
-    include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     ${MX_RUNTIME_INCLUDE_DIR}
     ${MX_RUNTIME_INCLUDE_DIR}/mcr
   PRIVATE
@@ -57,12 +60,44 @@ target_link_libraries(opencv_mx
   PUBLIC ${OpenCV_LIBS} ${MX_RUNTIME_LIBRARY} ${MX_CUDA_BRIDGE_LIBRARY}
   PRIVATE ${CVCUDA_LIBRARY} ${NVCV_TYPES_LIBRARY})
 
-add_executable(mx_resize_test tests/resize_test.cpp)
-target_link_libraries(mx_resize_test PRIVATE opencv_mx)
-add_test(NAME mx_resize_test COMMAND mx_resize_test)
-set_tests_properties(mx_resize_test PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(OpenCVMX::opencv_mx ALIAS opencv_mx)
 
-add_executable(mx_resize_example examples/resize.cpp)
-target_link_libraries(mx_resize_example PRIVATE opencv_mx)
+option(BUILD_TESTS "Build MX backend tests" ON)
+option(BUILD_EXAMPLES "Build MX backend examples" ON)
 
-enable_testing()
+if(BUILD_TESTS)
+  enable_testing()
+  add_executable(mx_resize_test tests/resize_test.cpp)
+  target_link_libraries(mx_resize_test PRIVATE opencv_mx)
+  add_test(NAME mx_resize_test COMMAND mx_resize_test)
+  set_tests_properties(mx_resize_test PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
+
+if(BUILD_EXAMPLES)
+  add_executable(mx_resize_example examples/resize.cpp)
+  target_link_libraries(mx_resize_example PRIVATE opencv_mx)
+endif()
+
+install(TARGETS opencv_mx EXPORT OpenCVMXTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT OpenCVMXTargets
+        FILE OpenCVMXTargets.cmake
+        NAMESPACE OpenCVMX::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenCVMX)
+
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/OpenCVMXConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/OpenCVMXConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenCVMX)
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/OpenCVMXConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion)
+install(FILES
+  ${CMAKE_CURRENT_BINARY_DIR}/OpenCVMXConfig.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/OpenCVMXConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenCVMX)

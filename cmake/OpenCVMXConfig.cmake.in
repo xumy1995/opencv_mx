@@ -1,0 +1,4 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(OpenCV COMPONENTS core imgproc imgcodecs)
+include("${CMAKE_CURRENT_LIST_DIR}/OpenCVMXTargets.cmake")
