@@ -132,3 +132,39 @@ cv::imwrite("output.jpg", output);
 
 支持 `CV_8UC1/3/4` packed HWC、四种 resize 插值、基础 8-bit `cvtColor`、
 同步和 Stream 异步接口。异步操作完成前，源/目标 `GpuMat` 必须保持有效且不得重新分配。
+
+### Python Example（Standalone）
+
+Standalone 构建会生成实验性 `opencv_mx` Python 扩展。先将构建目录加入
+`PYTHONPATH`，再运行：
+
+```bash
+export PYTHONPATH=/workspace/opencv_mx/build:$PYTHONPATH
+python - <<'PY'
+import cv2
+import opencv_mx as mx
+
+image = cv2.imread("/workspace/opencv_mx/testdata/input_bgr.png")
+gpu = mx.GpuMat()
+gpu.upload(image)
+
+resized = mx.resize(gpu, (320, 240), int(cv2.INTER_LINEAR))
+rgb = mx.cvtColor(resized, int(cv2.COLOR_BGR2RGB))
+result = rgb.download()
+
+print("shape:", result.shape)
+print("dtype:", result.dtype)
+cv2.imwrite("/tmp/mx_python_output.png", cv2.cvtColor(result, cv2.COLOR_RGB2BGR))
+PY
+```
+
+Python API 当前支持：
+
+- `mx.GpuMat().upload(numpy_uint8_array)`
+- `mx.resize(gpu, (width, height), interpolation)`
+- `mx.cvtColor(gpu, code)`
+- `gpu.download()` 返回 NumPy 数组
+
+该扩展是 standalone 原型，不是 `cv2` 的 `mx` 子模块。contrib 插件模式下，
+Python 接口由 OpenCV 主工程的 bindings generator 统一生成，待正式接入后再使用
+对应的 `cv2.mx` API。
