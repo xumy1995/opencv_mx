@@ -13,7 +13,7 @@ void check(NVCVStatus status, const char *operation) {
 
 NVCVDataType dtypeFor(int cvType) {
     switch (cvType) {
-    case CV_8UC1: return NVCV_DATA_TYPE_U8;
+    case CV_8UC1: throw std::invalid_argument("cv::mx::resize currently requires packed 3/4-channel input");
     // Channels are represented by HWC shape/layout. Using 3U8/4U8 here would
     // encode the channel count twice and makes the tensor descriptor invalid.
     case CV_8UC3: return NVCV_DATA_TYPE_U8;
@@ -37,11 +37,14 @@ public:
     explicit TensorHandle(const cv::mx::GpuMat &mat) {
         NVCVTensorData data{};
         data.dtype = dtypeFor(mat.type());
+        const int channels = CV_MAT_CN(mat.type());
+        // Resize accepts HWC/NHWC tensors. Keep a singleton channel dimension
+        // for grayscale images (HW is not a valid resize input in this API).
         data.layout = NVCV_TENSOR_HWC;
         data.rank = 3;
         data.shape[0] = mat.rows();
         data.shape[1] = mat.cols();
-        data.shape[2] = CV_MAT_CN(mat.type());
+        data.shape[2] = channels;
         data.bufferType = NVCV_TENSOR_BUFFER_STRIDED_CUDA;
         data.buffer.strided.basePtr = const_cast<NVCVByte *>(static_cast<const NVCVByte *>(mat.data()));
         data.buffer.strided.strides[0] = mat.step();

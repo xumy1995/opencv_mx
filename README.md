@@ -207,8 +207,8 @@ cv::imwrite("output.jpg", dst);
 
 当前支持：
 
-- `CV_8UC1`、`CV_8UC3`、`CV_8UC4`
+- `CV_8UC3`、`CV_8UC4`（packed HWC）
 - `INTER_NEAREST`、`INTER_LINEAR`、`INTER_CUBIC`、`INTER_AREA`
 - 同步 upload、resize、download
 
-当前尚未实现 ROI、引用计数、显存池、完整 Stream 封装和 Python `cv2.mx` 绑定。
+当前尚未实现 `CV_8UC1` resize、ROI、引用计数、显存池、完整 Stream 封装和 Python `cv2.mx` 绑定。
