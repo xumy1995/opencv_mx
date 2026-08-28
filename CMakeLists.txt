@@ -65,6 +65,7 @@ add_library(OpenCVMX::opencv_mx ALIAS opencv_mx)
 
 option(BUILD_TESTS "Build MX backend tests" ON)
 option(BUILD_EXAMPLES "Build MX backend examples" ON)
+option(BUILD_PYTHON "Build Python bindings" ON)
 
 if(BUILD_TESTS)
   enable_testing()
@@ -84,6 +85,14 @@ endif()
 if(BUILD_EXAMPLES)
   add_executable(mx_resize_example examples/resize.cpp)
   target_link_libraries(mx_resize_example PRIVATE opencv_mx)
+endif()
+
+if(BUILD_PYTHON)
+  find_package(Python COMPONENTS Interpreter Development REQUIRED)
+  find_package(pybind11 CONFIG REQUIRED)
+  pybind11_add_module(opencv_mx_python MODULE python/module.cpp)
+  target_link_libraries(opencv_mx_python PRIVATE opencv_mx)
+  set_target_properties(opencv_mx_python PROPERTIES OUTPUT_NAME opencv_mx)
 endif()
 
 install(TARGETS opencv_mx EXPORT OpenCVMXTargets

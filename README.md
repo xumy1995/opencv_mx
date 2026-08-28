@@ -1,4 +1,19 @@
-# OpenCV MX-C500 后端原型
+# OpenCV MX-C500 后端插件原型
+
+本仓库是一个可独立维护的 GitHub 项目，同时提供两种构建方式：
+
+- **Standalone**：使用仓库顶层 `CMakeLists.txt` 快速编译和验证后端。
+- **OpenCV contrib 插件**：使用 `modules/mx` 作为 OpenCV extra module，和 OpenCV 主工程一起编译。
+
+目录结构：
+
+```text
+opencv_mx/
+├── modules/mx/       # OpenCV contrib 风格模块（推荐集成入口）
+├── include/ src/     # standalone 原型实现
+├── tests/ testdata/  # standalone 回归测试和 golden 数据
+└── README.md
+```
 
 ## 下载镜像和 SDK
 
@@ -51,14 +66,14 @@ cv::mx::resize()
 cv::mx::cvtColor()
 ```
 
-OpenCV 负责 CPU 图像读写，MACA Runtime 负责 MX-C500 显存和数据搬运，沐曦版 CV-CUDA 负责 GPU resize。
+OpenCV 负责 CPU 图像读写，MACA Runtime 负责 MX-C500 显存和数据搬运，沐曦版 CV-CUDA 负责 GPU 算子。
 
 以下步骤从已经进入 `opencv-mx-dev` 容器后开始。
 
 ## 1. 确认挂载目录
 
-本仓库也可以作为 OpenCV contrib 风格的独立扩展仓库使用。模块位于
-`modules/mx`，配置 OpenCV 主工程时指定：
+本仓库的 contrib 模块位于 `modules/mx`。配置 OpenCV 主工程时，
+`OPENCV_EXTRA_MODULES_PATH` 应指向仓库的 `modules` 目录：
 
 ```bash
 cmake -S /workspace/opencv -B /workspace/opencv/build-mx \
@@ -66,8 +81,11 @@ cmake -S /workspace/opencv -B /workspace/opencv/build-mx \
   -DBUILD_opencv_mx=ON
 ```
 
-仓库顶层 CMake 仍保留 standalone 构建，便于快速验证；两种模式共享
-`modules/mx` 下的实现。
+仓库顶层 CMake 保留 standalone 构建，便于快速验证；contrib 模块和 standalone
+代码目前分别维护，后续以 `modules/mx` 为正式集成入口。
+
+`modules/mx/CMakeLists.txt` 使用 OpenCV contrib 的 `ocv_add_module`、
+`ocv_glob_module_sources` 和 `ocv_create_module`，不会修改 OpenCV 主仓库。
 
 容器启动时应已挂载：
 
@@ -156,7 +174,7 @@ test -f /opt/maca-3.8.2/lib/libruntime_cu.so
 echo "development environment OK"
 ```
 
-## 6. 配置和编译
+## 6. Standalone 配置和编译
 
 ```bash
 cd /workspace/opencv_mx
@@ -177,7 +195,24 @@ cmake --build build -j"$(nproc)"
 [100%] Built target mx_resize_example
 ```
 
-## 7. 运行 resize 示例
+## 7. 作为 OpenCV contrib 插件编译
+
+需要准备匹配版本的 OpenCV 源码，并将本仓库挂载为 `/workspace/opencv_mx`：
+
+```bash
+cmake -S /workspace/opencv -B /workspace/opencv/build-mx \
+  -DOPENCV_EXTRA_MODULES_PATH=/workspace/opencv_mx/modules \
+  -DBUILD_opencv_mx=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMACA_PATH=/opt/maca-3.8.2 \
+  -DCVCUDA_ROOT=/opt/maca-ai/cvcuda0
+cmake --build /workspace/opencv/build-mx -j"$(nproc)"
+```
+
+OpenCV 主工程会创建 `opencv_mx` 模块目标并统一处理安装、测试和 Python
+绑定生成。插件模式不使用仓库顶层 standalone 的安装目标。
+
+## 8. 运行 resize 示例
 
 准备一张输入图片，例如：
 
@@ -199,7 +234,7 @@ cd /workspace/opencv_mx
 ```
 
 
-## 8. C++ 使用方式
+## 9. C++ 使用方式
 
 ```cpp
 #include <opencv2/imgcodecs.hpp>
@@ -230,7 +265,7 @@ cv::imwrite("output.jpg", dst);
 带 Stream 的 resize 会将 CV-CUDA 资源释放操作排入同一 MACA stream，调用会立即返回；
 在读取结果或复用相关缓冲区前调用 `stream.waitForCompletion()`。不传 Stream 时接口保持同步。
 
-## 9. 运行自动化测试
+## 10. 运行自动化测试
 
 ```bash
 cd /workspace/opencv_mx
@@ -265,9 +300,10 @@ ctest --test-dir build --output-on-failure
    - 输入及 golden 输出均随仓库提交，其他环境可直接运行同一套测试
    - 异步操作期间必须保持源和目标 `GpuMat` 有效且不得重新分配
 
-当前尚未实现显存池和 Python `cv2.mx` 绑定。
+当前尚未完成官方 `cv2` Python generator 集成。仓库中的 Python 目录仅是实验性
+pybind11 原型；正式插件模式应由 OpenCV 主工程生成并注册 Python API。显存池也尚未实现。
 
-## 10. CMake 安装与集成
+## 11. Standalone CMake 安装与集成
 
 可通过选项关闭测试或示例：
 
@@ -303,7 +339,7 @@ Runtime、CV-CUDA 仍需在目标环境中安装并可被链接器/运行时找�
 
 运行时仍需确保 MACA Runtime、CV-CUDA 及其动态库位于系统库搜索路径中（或配置 `LD_LIBRARY_PATH`）。
 
-## 11. GpuMat 与 Stream 示例
+## 12. GpuMat 与 Stream 示例
 
 ```cpp
 cv::mx::Stream stream;
