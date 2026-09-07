@@ -90,13 +90,16 @@ if lena is not None:
         subprocess.run([str(ROOT / "build/mx_resize_example"), str(ROOT / "testdata/shared/lena.png"), str(mx_path), str(interpolation), "1", str(W), str(H)], check=True, stdout=subprocess.DEVNULL)
         mx = cv2.imread(str(mx_path), cv2.IMREAD_COLOR)
         diff = np.abs(cpu.astype(np.int16) - mx.astype(np.int16)).astype(np.uint8)
-        heat = cv2.applyColorMap(np.max(diff, axis=2), cv2.COLORMAP_JET)
+        # Lena comparison uses a fixed 0~125 scale; larger errors saturate red.
+        lena_heat_scale = 125
+        heat_values = np.minimum(np.max(diff, axis=2), lena_heat_scale).astype(np.uint8)
+        heat = cv2.applyColorMap((heat_values.astype(np.float32) * 255 / lena_heat_scale).astype(np.uint8), cv2.COLORMAP_JET)
         cv2.imwrite(str(lena_dir / f"diff_{name}.png"), heat)
-        lena_rows.append((name.upper(), cpu, mx, heat, int(diff.max())))
+        lena_rows.append((name.upper(), cpu, mx, heat, int(diff.max()), lena_heat_scale))
     canvas = np.full((len(lena_rows) * (H + 62), 150 + 3 * (W + 64) + 48, 3), 255, np.uint8)
-    for row, (name, cpu, mx, heat, maximum) in enumerate(lena_rows):
+    for row, (name, cpu, mx, heat, maximum, heat_scale) in enumerate(lena_rows):
         y = row * (H + 62); cv2.putText(canvas, name, (12, y + H // 2), cv2.FONT_HERSHEY_SIMPLEX, .72, (0,0,0), 2)
-        for col, (image, label) in enumerate(((cpu,"OpenCV CPU"),(mx,"OpenCV MX"),(heat,f"Absolute Diff (max={maximum})"))):
+        for col, (image, label) in enumerate(((cpu,"OpenCV CPU"),(mx,"OpenCV MX"),(heat,f"Absolute Diff (max={maximum}, scale=125)"))):
             x = 150 + col * (W + 64); canvas[y+38:y+38+H, x:x+W] = image
             cv2.putText(canvas, label, (x, y + 26), cv2.FONT_HERSHEY_SIMPLEX, .62, (0,0,0), 1)
             if col == 2:
@@ -105,7 +108,7 @@ if lena is not None:
                     value = int(255 * (H - 21 - by) / max(1, H - 21))
                     canvas[y + 38 + 10 + by, bar_x:bar_x + 18] = cv2.applyColorMap(
                         np.uint8([[value]]), cv2.COLORMAP_JET)[0, 0]
-                cv2.putText(canvas, "255", (bar_x + 22, y + 38 + 16), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
+                cv2.putText(canvas, "125", (bar_x + 22, y + 38 + 16), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
                 cv2.putText(canvas, "0", (bar_x + 22, y + 38 + H - 12), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
                 cv2.putText(canvas, "low -> high", (bar_x - 2, y + 38 + H + 8), cv2.FONT_HERSHEY_SIMPLEX, .34, (0,0,0), 1)
     cv2.imwrite(str(OUT / "lena_comparison_grid.png"), canvas)
