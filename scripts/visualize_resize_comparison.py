@@ -9,6 +9,33 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "testdata/resize_visualization_512x384"
 OUT.mkdir(parents=True, exist_ok=True)
 W, H = 512, 384
+
+def make_tile(image, label, heat_scale=None):
+    header, legend_width = 38, 64
+    tile = np.full((image.shape[0] + header, image.shape[1] + legend_width, 3), 255, np.uint8)
+    tile[header:, :image.shape[1]] = image
+    cv2.rectangle(tile, (0, 0), (tile.shape[1] - 1, header - 1), (32, 32, 32), -1)
+    cv2.putText(tile, label, (10, 26), cv2.FONT_HERSHEY_SIMPLEX, .62, (255,255,255), 1, cv2.LINE_AA)
+    if heat_scale is not None:
+        bar_x, bar_h = image.shape[1] + 10, image.shape[0] - 20
+        for y in range(bar_h):
+            value = int(255 * (bar_h - 1 - y) / max(1, bar_h - 1))
+            tile[header+10+y, bar_x:bar_x+18] = cv2.applyColorMap(np.uint8([[value]]), cv2.COLORMAP_JET)[0,0]
+        cv2.putText(tile, str(heat_scale), (bar_x+22, header+16), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
+        cv2.putText(tile, "0", (bar_x+22, header+bar_h+8), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
+        cv2.putText(tile, "low -> high", (bar_x-2, header+bar_h+24), cv2.FONT_HERSHEY_SIMPLEX, .34, (0,0,0), 1)
+    return tile
+
+def make_grid(rows):
+    gap, label_width = 24, 150
+    tile_h, tile_w = rows[0][1][0].shape[:2]
+    grid = np.full((len(rows)*tile_h+(len(rows)-1)*gap, label_width+3*tile_w+2*gap, 3), 255, np.uint8)
+    for row, (name, tiles) in enumerate(rows):
+        y = row * (tile_h + gap)
+        cv2.putText(grid, name, (12,y+tile_h//2), cv2.FONT_HERSHEY_SIMPLEX, .72, (0,0,0), 2, cv2.LINE_AA)
+        for col, tile in enumerate(tiles):
+            x = label_width + col * (tile_w + gap); grid[y:y+tile_h, x:x+tile_w] = tile
+    return grid
 rows, cols = 768, 1024
 base = np.empty((rows, cols), np.uint8)
 rng = np.random.default_rng(0x123456789abcdef & 0xffffffff)
@@ -38,44 +65,10 @@ for name, interpolation in (("nearest", 0), ("linear", 1), ("cubic", 2), ("area"
     cv2.imwrite(str(OUT / f"diff_{name}.png"), heat)
     max_diff = int(diff.max())
     labels = ["OpenCV CPU", "OpenCV MX", f"Absolute Diff (max={max_diff})"]
-    tiles = []
-    for image, label in zip((cpu, mx, heat), labels):
-        header = 38
-        legend_width = 64
-        tile = np.full((image.shape[0] + header, image.shape[1] + legend_width, 3), 255, dtype=np.uint8)
-        tile[header:, :image.shape[1]] = image
-        cv2.rectangle(tile, (0, 0), (tile.shape[1] - 1, header - 1), (32, 32, 32), -1)
-        cv2.putText(tile, label, (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.62,
-                    (255, 255, 255), 1, cv2.LINE_AA)
-        if image is heat:
-            bar_x = image.shape[1] + 10
-            bar_h = image.shape[0] - 20
-            for y in range(bar_h):
-                value = int(255 * (bar_h - 1 - y) / max(1, bar_h - 1))
-                tile[header + 10 + y, bar_x:bar_x + 18] = cv2.applyColorMap(
-                    np.uint8([[value]]), cv2.COLORMAP_JET)[0, 0]
-            cv2.putText(tile, "255", (bar_x + 22, header + 16),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 0), 1, cv2.LINE_AA)
-            cv2.putText(tile, "0", (bar_x + 22, header + bar_h + 8),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 0), 1, cv2.LINE_AA)
-            cv2.putText(tile, "low -> high", (bar_x - 2, header + bar_h + 24),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.34, (0, 0, 0), 1, cv2.LINE_AA)
-        tiles.append(tile)
+    tiles = [make_tile(cpu, labels[0]), make_tile(mx, labels[1]), make_tile(heat, labels[2], 255)]
     rows_for_grid.append((name.upper(), tiles))
     print(f"{name}: max={diff.max()} mean={diff.mean():.6f} differing_pixels={np.any(diff != 0, axis=2).sum()}")
-gap = 24
-label_width = 150
-tile_h, tile_w = rows_for_grid[0][1][0].shape[:2]
-grid = np.full((len(rows_for_grid) * tile_h + (len(rows_for_grid) - 1) * gap,
-                label_width + 3 * tile_w + 2 * gap, 3), 255, dtype=np.uint8)
-for row, (name, tiles) in enumerate(rows_for_grid):
-    y = row * (tile_h + gap)
-    cv2.putText(grid, name, (12, y + tile_h // 2), cv2.FONT_HERSHEY_SIMPLEX,
-                0.72, (0, 0, 0), 2, cv2.LINE_AA)
-    for col, tile in enumerate(tiles):
-        x = label_width + col * (tile_w + gap)
-        grid[y:y + tile_h, x:x + tile_w] = tile
-cv2.imwrite(str(OUT / "comparison_grid.png"), grid)
+cv2.imwrite(str(OUT / "comparison_grid.png"), make_grid(rows_for_grid))
 # grid for OpenCV's canonical Lena test image.
 lena = cv2.imread(str(ROOT / "testdata/shared/lena.png"), cv2.IMREAD_COLOR)
 if lena is not None:
@@ -95,23 +88,10 @@ if lena is not None:
         heat_values = np.minimum(np.max(diff, axis=2), lena_heat_scale).astype(np.uint8)
         heat = cv2.applyColorMap((heat_values.astype(np.float32) * 255 / lena_heat_scale).astype(np.uint8), cv2.COLORMAP_JET)
         cv2.imwrite(str(lena_dir / f"diff_{name}.png"), heat)
-        lena_rows.append((name.upper(), cpu, mx, heat, int(diff.max()), lena_heat_scale))
-    canvas = np.full((len(lena_rows) * (H + 62), 150 + 3 * (W + 64) + 48, 3), 255, np.uint8)
-    for row, (name, cpu, mx, heat, maximum, heat_scale) in enumerate(lena_rows):
-        y = row * (H + 62); cv2.putText(canvas, name, (12, y + H // 2), cv2.FONT_HERSHEY_SIMPLEX, .72, (0,0,0), 2)
-        for col, (image, label) in enumerate(((cpu,"OpenCV CPU"),(mx,"OpenCV MX"),(heat,f"Absolute Diff (max={maximum}, scale=125)"))):
-            x = 150 + col * (W + 64); canvas[y+38:y+38+H, x:x+W] = image
-            cv2.putText(canvas, label, (x, y + 26), cv2.FONT_HERSHEY_SIMPLEX, .62, (0,0,0), 1)
-            if col == 2:
-                bar_x = x + W + 10
-                for by in range(H - 20):
-                    value = int(255 * (H - 21 - by) / max(1, H - 21))
-                    canvas[y + 38 + 10 + by, bar_x:bar_x + 18] = cv2.applyColorMap(
-                        np.uint8([[value]]), cv2.COLORMAP_JET)[0, 0]
-                cv2.putText(canvas, "125", (bar_x + 22, y + 38 + 16), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
-                cv2.putText(canvas, "0", (bar_x + 22, y + 38 + H - 12), cv2.FONT_HERSHEY_SIMPLEX, .42, (0,0,0), 1)
-                cv2.putText(canvas, "low -> high", (bar_x - 2, y + 38 + H + 8), cv2.FONT_HERSHEY_SIMPLEX, .34, (0,0,0), 1)
-    cv2.imwrite(str(OUT / "lena_comparison_grid.png"), canvas)
+        labels = ("OpenCV CPU", "OpenCV MX", f"Absolute Diff (max={int(diff.max())}, scale=125)")
+        tiles = [make_tile(cpu, labels[0]), make_tile(mx, labels[1]), make_tile(heat, labels[2], 125)]
+        lena_rows.append((name.upper(), tiles))
+    cv2.imwrite(str(OUT / "lena_comparison_grid.png"), make_grid(lena_rows))
 print(f"outputs: {OUT}")
 
 # Keep only the two summary images; all intermediate CPU/MX/diff files are
