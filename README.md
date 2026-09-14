@@ -170,3 +170,16 @@ Python API 当前支持：
 该扩展是 standalone 原型，不是 `cv2` 的 `mx` 子模块。contrib 插件模式下，
 Python 接口由 OpenCV 主工程的 bindings generator 统一生成，待正式接入后再使用
 对应的 `cv2.mx` API。
+
+### CPU/CUDA Resize 可视化对比
+
+使用 OpenCV 验证记录中的 `build-cuda` Python 构建，在有 NVIDIA GPU 的主机上运行：
+
+```bash
+python3 scripts/visualize_resize_comparison.py
+```
+
+脚本会调用 `cv2.cuda.resize`，并将 CPU、CUDA 和绝对差异热力图写入
+`testdata/resize_visualization_cuda_512x384/`。也可以通过
+`--opencv-cuda-build /path/to/build-cuda` 或 `OPENCV_CUDA_BUILD` 指定其他 OpenCV
+CUDA 构建；`--output` 可修改输出目录。当前进程必须能访问 CUDA 设备。
