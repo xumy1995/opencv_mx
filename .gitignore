@@ -1,5 +1,6 @@
 # CMake build trees and generated files
 /build/
+/build-eval/
 /build-install/
 /cmake-build-*/
 CMakeCache.txt
@@ -10,6 +11,8 @@ Makefile
 compile_commands.json
 
 # Compiled artifacts
+__pycache__/
+*.pyc
 *.a
 *.so
 *.so.*

@@ -2,6 +2,7 @@
 """Fast unit checks for the backend-independent ResNet preprocessing helpers."""
 
 import unittest
+from unittest.mock import Mock
 
 import numpy as np
 import torch
@@ -9,7 +10,9 @@ import torch
 from eval_resnet_opencv import (
     IMAGE_SIZE,
     RESIZE_SHORT_EDGE,
+    TimedDataset,
     center_crop,
+    make_backend,
     normalize_to_nchw,
     resize_output_size,
 )
@@ -39,6 +42,28 @@ class ResNetPreprocessTest(unittest.TestCase):
             resize_output_size(0, 100)
         with self.assertRaises(ValueError):
             center_crop(np.zeros((IMAGE_SIZE - 1, IMAGE_SIZE, 3), dtype=np.uint8))
+
+    def test_timed_dataset_tracks_item_access(self):
+        dataset = TimedDataset([{"label": 3}])
+        self.assertEqual(len(dataset), 1)
+        self.assertEqual(dataset[0]["label"], 3)
+        self.assertGreaterEqual(dataset.seconds, 0.0)
+
+    def test_hf_collate_reports_breakdown(self):
+        image = Mock()
+        image.convert.return_value = "RGB"
+        processor = Mock(return_value={
+            "pixel_values": torch.zeros((1, 3, IMAGE_SIZE, IMAGE_SIZE))
+        })
+        pixels, labels, details = make_backend("hf", processor, None).collate(
+            [{"image": image, "label": 3}]
+        )
+        image.convert.assert_called_once_with("RGB")
+        processor.assert_called_once_with(images=["RGB"], return_tensors="pt")
+        self.assertEqual(tuple(pixels.shape), (1, 3, IMAGE_SIZE, IMAGE_SIZE))
+        self.assertEqual(labels.tolist(), [3])
+        self.assertEqual(set(details), {"collate", "rgb_convert", "image_processor"})
+        self.assertTrue(all(elapsed >= 0 for elapsed in details.values()))
 
 
 if __name__ == "__main__":

@@ -120,6 +120,22 @@ PYTHONPATH=/workspace/opencv_mx/build-eval python eval_resnet_opencv.py \
   解码和图像预处理；
 - `End-to-end wall/rate`：从请求 batch 到完成推理的墙钟时间和吞吐。
 
+当前脚本还会打印 measured batches 的分段 breakdown。`num-workers=0` 时各项可直接
+解释为主进程累计时间：
+
+- `dataset_getitem`：datasets 取样、parquet/Arrow 字段访问和图像对象解码；
+- `rgb_convert`：HF 路径为 PIL `.convert("RGB")`；OpenCV 路径为图像对象转连续
+  RGB NumPy；
+- `image_processor`：仅 HF backend，统计批量 torchvision resize、crop、rescale、
+  normalize 和 batch Tensor 输出；
+- `resize`：CPU/MX backend 的逐图 resize；`upload`、`download`：仅 MX backend 的逐图 GPU 往返；
+- `postprocess`：center crop、float 转换、归一化和 HWC 到 NCHW；
+- `stack`：把单图 Tensor 组装成 batch；
+- `collate`：整个 collate 函数耗时，包含上述 collate 内部步骤。
+
+这些分段时间之和不一定严格等于 `Data wait`：`Data wait` 还包含 DataLoader/Python
+调度和计时边界开销，而 `collate` 已包含其内部各步骤。
+
 设置多个 DataLoader worker 时，`Image prep work` 是各 worker 时间之和，不能直接作为
 墙钟时间；`Data wait` 和 `End-to-end wall` 仍是墙钟时间。正式三路对比使用 worker 0。
 
@@ -139,7 +155,23 @@ PYTHONPATH=/workspace/opencv_mx/build-eval python eval_resnet_opencv.py \
 不表示图像 resize/crop/normalize 时间。
 
 MX 相对 CPU OpenCV 的精度差异为 Top-1 `0.0120 pp`、Top-5 `0.0020 pp`，低于
-`0.1 pp` 阈值，检查通过。日志位于 `logs/resnet50-opencv-workers0.log`。
+`0.1 pp` 阈值，检查通过。日志位于 `logs/resnet50-opencv-workers0.log`。该历史日志
+是在分段 breakdown 加入前生成的，因此没有上述各子项；重新运行命令后即可获得分段数据。
+
+完整 50,000 张 HF 单后端分段复测记录在 `logs/resnet50-hf-breakdown.log`：
+
+```text
+Data wait        : 184.857s
+dataset_getitem  : 123.925s
+collate          : 58.791s
+rgb_convert      : 7.352s
+image_processor  : 51.397s
+```
+
+`rgb_convert + image_processor = 58.749s`，与 `collate=58.791s` 的约 `0.042s`
+差值来自 label Tensor 构造、字典访问和计时/Python 开销。HF 的 ImageProcessor 在
+CPU 上按 batch 执行 torchvision resize、crop、rescale 和 normalize；完成后整个
+batch Tensor 才一次性上传 C500。
 
 ## 性能限制
 

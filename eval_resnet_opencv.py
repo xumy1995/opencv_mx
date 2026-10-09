@@ -199,16 +199,29 @@ def normalize_to_nchw(image: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(image_f32.transpose(2, 0, 1).copy())
 
 
-def preprocess_opencv_cpu(images: list[Any]) -> torch.Tensor:
+def preprocess_opencv_cpu(images: list[Any], timing: dict[str, float] | None = None) -> torch.Tensor:
     import cv2
 
     output = []
     for image in images:
+        item_start = time.perf_counter()
         rgb = _rgb_array(image)
+        if timing is not None:
+            timing["rgb_convert"] = timing.get("rgb_convert", 0.0) + (time.perf_counter() - item_start)
         width, height = resize_output_size(rgb.shape[0], rgb.shape[1])
+        resize_start = time.perf_counter()
         resized = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_CUBIC)
+        if timing is not None:
+            timing["resize"] = timing.get("resize", 0.0) + (time.perf_counter() - resize_start)
+        post_start = time.perf_counter()
         output.append(normalize_to_nchw(center_crop(resized)))
-    return torch.stack(output, dim=0)
+        if timing is not None:
+            timing["postprocess"] = timing.get("postprocess", 0.0) + (time.perf_counter() - post_start)
+    stack_start = time.perf_counter()
+    result = torch.stack(output, dim=0)
+    if timing is not None:
+        timing["stack"] = timing.get("stack", 0.0) + (time.perf_counter() - stack_start)
+    return result
 
 
 def import_mx(mx_python_path: str) -> Any:
@@ -224,28 +237,64 @@ def import_mx(mx_python_path: str) -> Any:
     return mx
 
 
-def preprocess_opencv_mx(images: list[Any], mx: Any) -> torch.Tensor:
+def preprocess_opencv_mx(images: list[Any], mx: Any, timing: dict[str, float] | None = None) -> torch.Tensor:
     import cv2
 
     output = []
     for image in images:
+        item_start = time.perf_counter()
         rgb = _rgb_array(image)
+        if timing is not None:
+            timing["rgb_convert"] = timing.get("rgb_convert", 0.0) + (time.perf_counter() - item_start)
         width, height = resize_output_size(rgb.shape[0], rgb.shape[1])
         source = mx.GpuMat()
+        upload_start = time.perf_counter()
         source.upload(rgb)
+        if timing is not None:
+            timing["upload"] = timing.get("upload", 0.0) + (time.perf_counter() - upload_start)
+        resize_start = time.perf_counter()
         resized = mx.resize(source, (width, height), int(cv2.INTER_CUBIC))
+        if timing is not None:
+            timing["resize"] = timing.get("resize", 0.0) + (time.perf_counter() - resize_start)
         # The standalone binding synchronizes download and returns uint8 HWC.
+        download_start = time.perf_counter()
         resized_rgb = np.asarray(resized.download())
+        if timing is not None:
+            timing["download"] = timing.get("download", 0.0) + (time.perf_counter() - download_start)
         if resized_rgb.ndim == 2:
             resized_rgb = resized_rgb[..., None]
+        post_start = time.perf_counter()
         output.append(normalize_to_nchw(center_crop(resized_rgb)))
-    return torch.stack(output, dim=0)
+        if timing is not None:
+            timing["postprocess"] = timing.get("postprocess", 0.0) + (time.perf_counter() - post_start)
+    stack_start = time.perf_counter()
+    result = torch.stack(output, dim=0)
+    if timing is not None:
+        timing["stack"] = timing.get("stack", 0.0) + (time.perf_counter() - stack_start)
+    return result
 
 
 @dataclass
 class Backend:
     name: str
-    collate: Callable[[list[dict[str, Any]]], tuple[torch.Tensor, torch.Tensor, float]]
+    collate: Callable[[list[dict[str, Any]]], tuple[torch.Tensor, torch.Tensor, dict[str, float]]]
+
+
+class TimedDataset:
+    """Measure dataset item access in the main process (meaningful for workers=0)."""
+
+    def __init__(self, dataset: Any):
+        self.dataset = dataset
+        self.seconds = 0.0
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, index: int) -> Any:
+        start = time.perf_counter()
+        item = self.dataset[index]
+        self.seconds += time.perf_counter() - start
+        return item
 
 
 def make_backend(
@@ -255,38 +304,49 @@ def make_backend(
         if processor is None:
             raise ValueError("HF backend requires an image processor")
 
-        def collate(batch: list[dict[str, Any]]) -> tuple[torch.Tensor, torch.Tensor, float]:
+        def collate(batch: list[dict[str, Any]]) -> tuple[torch.Tensor, torch.Tensor, dict[str, float]]:
             start = time.perf_counter()
+            rgb_start = time.perf_counter()
             images = [item["image"].convert("RGB") for item in batch]
+            rgb_elapsed = time.perf_counter() - rgb_start
             labels = torch.tensor(
                 [item.get("label", -1) for item in batch], dtype=torch.long
             )
+            processor_start = time.perf_counter()
             pixels = processor(images=images, return_tensors="pt")["pixel_values"]
-            return pixels, labels, time.perf_counter() - start
+            return pixels, labels, {
+                "collate": time.perf_counter() - start,
+                "rgb_convert": rgb_elapsed,
+                "image_processor": time.perf_counter() - processor_start,
+            }
 
     elif name == "opencv_cpu":
 
-        def collate(batch: list[dict[str, Any]]) -> tuple[torch.Tensor, torch.Tensor, float]:
+        def collate(batch: list[dict[str, Any]]) -> tuple[torch.Tensor, torch.Tensor, dict[str, float]]:
             start = time.perf_counter()
             images = [item["image"] for item in batch]
             labels = torch.tensor(
                 [item.get("label", -1) for item in batch], dtype=torch.long
             )
-            pixels = preprocess_opencv_cpu(images)
-            return pixels, labels, time.perf_counter() - start
+            details: dict[str, float] = {}
+            pixels = preprocess_opencv_cpu(images, details)
+            details["collate"] = time.perf_counter() - start
+            return pixels, labels, details
 
     elif name == "opencv_mx":
         if mx is None:
             raise ValueError("MX backend requires the opencv_mx module")
 
-        def collate(batch: list[dict[str, Any]]) -> tuple[torch.Tensor, torch.Tensor, float]:
+        def collate(batch: list[dict[str, Any]]) -> tuple[torch.Tensor, torch.Tensor, dict[str, float]]:
             start = time.perf_counter()
             images = [item["image"] for item in batch]
             labels = torch.tensor(
                 [item.get("label", -1) for item in batch], dtype=torch.long
             )
-            pixels = preprocess_opencv_mx(images, mx)
-            return pixels, labels, time.perf_counter() - start
+            details: dict[str, float] = {}
+            pixels = preprocess_opencv_mx(images, mx, details)
+            details["collate"] = time.perf_counter() - start
+            return pixels, labels, details
 
     else:
         raise ValueError(f"unknown backend {name}")
@@ -326,8 +386,9 @@ def run_backend(
         # CUDA/MACA contexts must not be initialized in forked DataLoader workers.
         print("opencv_mx: forcing --num-workers 0 for GpuMat safety")
         workers = 0
+    timed_dataset = TimedDataset(dataset) if workers == 0 else dataset
     loader = DataLoader(
-        dataset,
+        timed_dataset,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=workers,
@@ -339,6 +400,8 @@ def run_backend(
     top1_correct = top5_correct = 0
     preprocess_time = transfer_time = inference_time = measured_wall_time = 0.0
     data_wait_time = end_to_end_time = 0.0
+    detail_times: dict[str, float] = {}
+    previous_dataset_time = 0.0
     progress = tqdm(
         range(len(loader)),
         total=len(loader),
@@ -350,8 +413,12 @@ def run_backend(
     with torch.inference_mode():
         for batch_index in progress:
             end_to_end_start = time.perf_counter()
-            pixel_values, labels, batch_prep_time = next(loader_iterator)
+            pixel_values, labels, batch_details = next(loader_iterator)
             data_ready = time.perf_counter()
+            dataset_delta = 0.0
+            if timed_dataset is not dataset:
+                dataset_delta = timed_dataset.seconds - previous_dataset_time
+                previous_dataset_time = timed_dataset.seconds
             measured = batch_index >= args.warmup_batches
             batch_size = labels.numel()
             batch_start = time.perf_counter()
@@ -367,7 +434,11 @@ def run_backend(
             infer_elapsed = time.perf_counter() - infer_start
             if measured:
                 measured_seen += batch_size
-                preprocess_time += batch_prep_time
+                for name, elapsed in batch_details.items():
+                    detail_times[name] = detail_times.get(name, 0.0) + float(elapsed)
+                if timed_dataset is not dataset:
+                    detail_times["dataset_getitem"] = detail_times.get("dataset_getitem", 0.0) + dataset_delta
+                preprocess_time += float(batch_details.get("collate", 0.0))
                 data_wait_time += data_ready - end_to_end_start
                 transfer_time += transfer_elapsed
                 inference_time += infer_elapsed
@@ -401,6 +472,7 @@ def run_backend(
         "samples_per_second": measured_seen / measured_wall_time if measured_wall_time else 0.0,
         "inference_samples_per_second": measured_seen / inference_time if inference_time else 0.0,
         "end_to_end_samples_per_second": measured_seen / end_to_end_time if end_to_end_time else 0.0,
+        "detail_times": detail_times,
     }
 
 
@@ -437,6 +509,11 @@ def print_result(
     print(f"Data wait        : {result['data_wait_seconds']:.3f}s")
     print(f"End-to-end wall  : {result['end_to_end_seconds']:.3f}s")
     print(f"End-to-end rate  : {result['end_to_end_samples_per_second']:.2f} samples/s")
+    details = result.get("detail_times", {})
+    if details:
+        print("Timing breakdown (measured batches):")
+        for name in sorted(details):
+            print(f"  {name:16s}: {float(details[name]):.3f}s")
 
 
 def main() -> int:
@@ -457,7 +534,7 @@ def main() -> int:
     if "hf" in args.backends:
         from transformers import AutoImageProcessor
 
-        processor = AutoImageProcessor.from_pretrained(args.model_path)
+        processor = AutoImageProcessor.from_pretrained(args.model_path, backend="torchvision")
     else:
         processor = None
     mx = import_mx(args.mx_python_path) if "opencv_mx" in args.backends else None
