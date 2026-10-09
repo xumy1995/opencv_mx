@@ -81,7 +81,7 @@ cmake --install /workspace/opencv/build-mx --prefix /opt/opencv-mx
 插件模式由 OpenCV 主工程统一生成 `cv2` Python 模块；Standalone 的 pybind11
 扩展名为 `opencv_mx`，两者不是同一个 Python API。
 
-## 三、运行 test 模块
+## 三、运行测试
 
 仅 Standalone 构建提供本仓库测试目标：
 
@@ -93,12 +93,14 @@ ctest --test-dir build --output-on-failure
 
 测试包括：
 
-- `mx_resize_test`：C1/C3/C4 × 4 种插值，共 12 个 MX CV-CUDA golden 用例。
+- `mx_resize_test`：对生成的 C1/C3/C4 图像测试线性插值（与 OpenCV 的
+  `INTER_LINEAR_EXACT` 比较，最大像素误差不超过 1）；对固定小图和
+  `testdata/shared/lena.png` 测试最近邻插值（与固定预期值或
+  `INTER_NEAREST_EXACT` 比较）。
 - `mx_gpumat_test`：尺寸/类型、内存复用、共享拷贝、ROI、异步 upload/download。
-- `mx_cvtcolor_test`：MX-C500 上的 BGR→RGB 转换及像素一致性。
+- `mx_cvtcolor_test`：MX-C500 上的 BGR→RGB 转换，与 OpenCV 输出逐像素比较。
 
-golden 文件位于 `testdata/golden/maca3.8.0.10-cvcuda0.16.0/`，测试不使用
-`cv::resize()` 作为参考，也不依赖 Python、Torch 或 NVIDIA CUDA。
+测试不依赖 golden 文件，也不依赖 Python、Torch 或 NVIDIA CUDA。
 
 ## 四、Example
 
@@ -108,13 +110,13 @@ Standalone 编译后运行：
 
 ```bash
 cd /workspace/opencv_mx
-./build/mx_resize_example input.jpg output.jpg
+./build/mx_resize_example testdata/shared/lena.png output.jpg
 ```
 
 可选参数为插值方式、读取模式和输出尺寸：
 
 ```bash
-./build/mx_resize_example input.jpg output.jpg 1 1 320 240
+./build/mx_resize_example testdata/shared/lena.png output.jpg 1 1 320 240
 ```
 
 基本 C++ 调用：
@@ -146,7 +148,7 @@ python - <<'PY'
 import cv2
 import opencv_mx as mx
 
-image = cv2.imread("/workspace/opencv_mx/testdata/input_bgr.png")
+image = cv2.imread("/workspace/opencv_mx/testdata/shared/lena.png")
 gpu = mx.GpuMat()
 gpu.upload(image)
 
