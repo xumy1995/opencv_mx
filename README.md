@@ -3,6 +3,8 @@
 本仓库提供 MX-C500 后端的 C++ 实现，以及可作为独立项目或 OpenCV extra module
 使用的构建方式。实现基于 MACA Runtime 和沐曦 CV-CUDA，不依赖 NVIDIA GPU。
 
+项目功能、实现方法、测试结果及后续计划见 [项目介绍与进展](PROJECT_OVERVIEW.md)。
+
 ## 一、环境准备
 
 ### 1. 启动容器
